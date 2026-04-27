@@ -1,4 +1,4 @@
-function [dataStore] = finalCompetition(Robot,maxTime, offset_x, offset_y)
+function [dataStore] = finalCompetition(Robot, maxTime, offset_x, offset_y)
 % main function for AMR final competition
 
 % load map data
