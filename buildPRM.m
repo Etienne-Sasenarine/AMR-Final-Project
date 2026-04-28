@@ -136,7 +136,8 @@ function isCollision = checkEdgeCollision(p1, p2, walls, radius)
         end
        
         if any(dist <= radius)
-            isCollision = true; return;
+            isCollision = true; 
+            return;
         end
     end
 end

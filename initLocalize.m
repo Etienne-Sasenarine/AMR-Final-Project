@@ -15,7 +15,7 @@ function initial_pose = initLocalize(Robot, waypoints, beacons, R, Q, predict, u
 %       initial_pose      3-by-1 state vector [x; y; theta] of the start pose
 
 try 
-    CreatePort=Robot.CreatePort;
+    CreatePort = Robot.CreatePort;
 catch
     CreatePort = Robot;
 end
