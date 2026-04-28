@@ -1,4 +1,4 @@
-function initial_pose = initLocalize(Robot, waypoints, beacons, R, Q, predict, update)
+function initial_pose = initLocalize(Robot, waypoints, R, Q, predict, update)
 % initLocalize: Spins robot in place and uses particle filter to find
 % initial starting location
 %
@@ -39,15 +39,10 @@ end
 % initalize spin
 turnW = 0.4;
 wheel2center = 0.13;
-isConverged = false;
 variance_threshold = 0.05;
 dataStore = struct('odometry', [], ...
-                   'rsdepth', [], ...
-                   'beacon', []);
+                   'rsdepth', []);
 noRobotCount = 0;
-
-init_x = 0; 
-init_y = 0;
 
 % run filter
 while true
@@ -65,77 +60,38 @@ while true
 
     % extract sensor measurements
     depth = dataStore.rsdepth(end, :);
-    current_time = depth(1);
     z = depth(2:end)';
 
-    % check if any beacons found
-    if ~isempty(dataStore.beacon) && ~isConverged
-        recent_beacons = dataStore.beacon(dataStore.beacon(:,1) == current_time, :);
-        if ~isempty(recent_beacons)
-            seen_id = recent_beacons(1, 2); 
-            beacon_map_idx = find(beacons(:, 1) == seen_id, 1);
-            
-            if ~isempty(beacon_map_idx)
-                global_bx = beacons(beacon_map_idx, 2);
-                global_by = beacons(beacon_map_idx, 3);
-                
-                % find closest waypoint
-                min_dist = inf;
-                starting_idx = -1;
-                for i = 1:k
-                    dist = sqrt((waypoints(i,1) - global_bx)^2 + (waypoints(i,2) - global_by)^2);
-                    if dist < min_dist
-                        min_dist = dist;
-                        starting_idx = i;
-                    end
-                end
-                
-                init_x = waypoints(starting_idx, 1);
-                init_y = waypoints(starting_idx, 2);
-
-                disp(['Beacon ', num2str(seen_id), ' detected! Snapping to waypoint ', num2str(starting_idx)]);
-                isConverged = true;
-            end
-        end
-    end
-
     % run particle filter
-    if ~isConverged
-        [particles, ~] = PF(particles, u, z, R, Q, predict, update);
-    
-        % check if particle filter converged
-        var_x = var(particles(1, :));
-        var_y = var(particles(2, :));
-        if (var_x < variance_threshold) && (var_y < variance_threshold)
-            isConverged = true;
-            mean_x = mean(particles(1, :));
-            mean_y = mean(particles(2, :));
-            
-            % find closest waypoint
-            min_dist = inf;
-            starting_idx = -1;
-            for i = 1:k
-                dist = sqrt((waypoints(i,1) - mean_x)^2 + (waypoints(i,2) - mean_y)^2);
-                if dist < min_dist
-                    min_dist = dist;
-                    starting_idx = i;
-                end
-            end
-            
-            % set inital location to exact waypoint
-            init_x = waypoints(starting_idx, 1);
-            init_y = waypoints(starting_idx, 2);
-        end
-    else
-        particles(3, :) = particles(3, :) + phi;
-    end
+    [particles, ~] = PF(particles, u, z, R, Q, predict, update);
 
-    if isConverged
+    % check if particle filter converged
+    var_x = var(particles(1, :));
+    var_y = var(particles(2, :));
+    if (var_x < variance_threshold) && (var_y < variance_threshold)
+        mean_x = mean(particles(1, :));
+        mean_y = mean(particles(2, :));
+        
+        % find closest waypoint
+        min_dist = inf;
+        starting_idx = -1;
+        for i = 1:k
+            dist = sqrt((waypoints(i,1) - mean_x)^2 + (waypoints(i,2) - mean_y)^2);
+            if dist < min_dist
+                min_dist = dist;
+                starting_idx = i;
+            end
+        end
+        
+        % set inital location to exact waypoint
+        init_x = waypoints(starting_idx, 1);
+        init_y = waypoints(starting_idx, 2);
+
         SetFwdVelAngVelCreate(Robot, 0, 0);
         mean_theta = atan2(mean(sin(particles(3, :))), mean(cos(particles(3, :))));
         break;
     end
-    
+
     pause(0.05); 
 end
 
