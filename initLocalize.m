@@ -1,4 +1,4 @@
-function initial_pose = initLocalize(Robot, waypoints, R, Q, predict, update)
+function initial_pose = initLocalize(Robot, waypoints, beacons, R, Q, predict, update)
 % initLocalize: Spins robot in place and uses particle filter to find
 % initial starting location
 %
@@ -41,7 +41,8 @@ turnW = 0.4;
 wheel2center = 0.13;
 variance_threshold = 0.05;
 dataStore = struct('odometry', [], ...
-                   'rsdepth', []);
+                   'rsdepth', [], ...
+                   'beacons', []);
 noRobotCount = 0;
 
 % run filter
@@ -61,6 +62,47 @@ while true
     % extract sensor measurements
     depth = dataStore.rsdepth(end, :);
     z = depth(2:end)';
+
+    % check if beacon detected
+    if ~isempty(dataStore.beacon)
+        recent_beacons = dataStore.beacon(dataStore.beacon(:,1) == current_time, :);
+        if ~isempty(recent_beacons)
+            seen_id = recent_beacons(1, 2); 
+            beacon_map_idx = find(beacons(:, 1) == seen_id, 1);
+            
+            if ~isempty(beacon_map_idx)
+                global_bx = beacons(beacon_map_idx, 2);
+                global_by = beacons(beacon_map_idx, 3);
+                
+                % find closest waypoint to the beacon
+                min_dist = inf;
+                starting_idx = -1;
+                for i = 1:k
+                    dist = sqrt((waypoints(i,1) - global_bx)^2 + (waypoints(i,2) - global_by)^2);
+                    if dist < min_dist
+                        min_dist = dist;
+                        starting_idx = i;
+                    end
+                end
+                
+                % look for particles within 0.5 meters of the correct waypoint
+                dist_to_target = sqrt((particles(1,:) - waypoints(starting_idx,1)).^2 + ...
+                                      (particles(2,:) - waypoints(starting_idx,2)).^2);
+                
+                correct_particles = particles(:, dist_to_target < 0.5); 
+                
+                if ~isempty(correct_particles)
+                    % resample the correct particles to fill back up to M
+                    resample_idx = randi(size(correct_particles, 2), 1, M);
+                    particles = correct_particles(:, resample_idx);
+                    
+                    disp(['Beacon ', num2str(seen_id), ' detected! Collapsed particles to waypoint ', num2str(starting_idx)]);
+                end
+                
+                dataStore.beacon = []; 
+            end
+        end
+    end
 
     % run particle filter
     [particles, ~] = PF(particles, u, z, R, Q, predict, update);
