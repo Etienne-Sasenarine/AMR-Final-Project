@@ -65,7 +65,7 @@ while true
 
     % check if beacon detected
     if ~isempty(dataStore.beacon)
-        recent_beacons = dataStore.beacon(dataStore.beacon(:,1) == current_time, :);
+        recent_beacons = dataStore.beacon(end, :);
         if ~isempty(recent_beacons)
             seen_id = recent_beacons(1, 2); 
             beacon_map_idx = find(beacons(:, 1) == seen_id, 1);

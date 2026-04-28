@@ -33,7 +33,7 @@ sensorWorld = [x; y] + R * sensorOrigin(:);
 
 K = length(angles);
 maxRange = 100;
-depth = zeros(K,1);
+depth = NaN(K,1);
 
 for k = 1:K
     angle = theta + angles(k);
@@ -46,7 +46,7 @@ for k = 1:K
         if isect
             distance = norm([xi; yi] - sensorWorld);
             projected_depth = distance * cos(angles(k));
-            if projected_depth < depth(k) || depth(k) == 0
+            if projected_depth < depth(k) || isnan(depth(k))
                 depth(k) = projected_depth;
             end
         end
