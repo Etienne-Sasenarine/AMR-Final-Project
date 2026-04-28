@@ -39,7 +39,8 @@ end
 % initalize spin
 turnW = 0.4;
 wheel2center = 0.13;
-variance_threshold = 0.05;
+variance_threshold = 0.005;
+heading_threshold = 0.05;
 dataStore = struct('odometry', [], ...
                    'rsdepth', [], ...
                    'beacons', []);
@@ -110,7 +111,11 @@ while true
     % check if particle filter converged
     var_x = var(particles(1, :));
     var_y = var(particles(2, :));
-    if (var_x < variance_threshold) && (var_y < variance_threshold)
+
+    R_theta = sqrt(mean(cos(particles(3,:)))^2 + mean(sin(particles(3,:)))^2);
+    var_theta = 1 - R_theta;
+
+    if (var_x < variance_threshold) && (var_y < variance_threshold) && (var_theta < heading_threshold)
         mean_x = mean(particles(1, :));
         mean_y = mean(particles(2, :));
         
