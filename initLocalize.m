@@ -37,11 +37,8 @@ for i = 1:k
 end
 
 % initalize spin
-scan_speed = 0.4;
-finish_speed = 1;
+turnW = 0.4;
 wheel2center = 0.13;
-total_angle_spun = 0;
-target_angle = 2 * pi;
 isConverged = false;
 variance_threshold = 0.05;
 dataStore = struct('odometry', [], ...
@@ -54,12 +51,6 @@ init_y = 0;
 
 % run filter
 while true
-    if isConverged
-        turnW = finish_speed;
-    else
-        turnW = scan_speed;
-    end
-
     [cmdV, cmdW] = limitCmds(0, turnW, 0.2, wheel2center);
     SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
 
@@ -71,7 +62,6 @@ while true
     d = odom(2);
     phi = odom(3);
     u = [d; phi];
-    total_angle_spun = total_angle_spun + abs(phi);
 
     % extract sensor measurements
     depth = dataStore.rsdepth(end, :);
@@ -136,19 +126,16 @@ while true
             init_x = waypoints(starting_idx, 1);
             init_y = waypoints(starting_idx, 2);
         end
+    else
+        particles(3, :) = particles(3, :) + phi;
     end
 
-    % check if rotation complete
-    if total_angle_spun >= target_angle
-        if isConverged
-            SetFwdVelAngVelCreate(Robot, 0, 0);
-            mean_theta = atan2(mean(sin(particles(3, :))), mean(cos(particles(3, :))));
-            break;
-        else
-            % spin another full rotation
-            target_angle = target_angle + 2 * pi;
-        end
+    if isConverged
+        SetFwdVelAngVelCreate(Robot, 0, 0);
+        mean_theta = atan2(mean(sin(particles(3, :))), mean(cos(particles(3, :))));
+        break;
     end
+    
     pause(0.05); 
 end
 
