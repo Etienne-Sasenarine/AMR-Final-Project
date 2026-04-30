@@ -37,7 +37,7 @@ function initial_pose = testInitLocalize(Robot)
 
     % 6. Execute Localization
     disp('Starting initial localization sequence...');
-    initial_pose = initLocalize(Robot, waypoints, R, Q, predict_func, update_func);
+    initial_pose = initLocalize(Robot, waypoints, beacons, R, Q, predict_func, update_func);
     
     disp('Localization complete. Final Pose:');
     disp(initial_pose);

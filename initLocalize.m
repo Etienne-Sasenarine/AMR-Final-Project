@@ -43,7 +43,7 @@ variance_threshold = 0.005;
 heading_threshold = 0.05;
 dataStore = struct('odometry', [], ...
                    'rsdepth', [], ...
-                   'beacons', []);
+                   'beacon', []);
 noRobotCount = 0;
 
 % run filter
