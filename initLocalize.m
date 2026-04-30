@@ -24,14 +24,14 @@ SetFwdVelAngVelCreate(Robot, 0,0);
 
 % initalize particles
 k = size(waypoints, 1);
-particles_per_waypoint = 500; % tune for how many particles per waypoint
+particles_per_waypoint = 1000; % tune for how many particles per waypoint
 M = particles_per_waypoint * k;
 particles = zeros(3, M);
 % tight clusters of particles around each waypoint with uniform random orientation
 idx = 1;
 for i = 1:k
-    particles(1, idx:idx+particles_per_waypoint-1) = waypoints(i, 1) + 0.1 * randn(1, particles_per_waypoint);
-    particles(2, idx:idx+particles_per_waypoint-1) = waypoints(i, 2) + 0.1 * randn(1, particles_per_waypoint); 
+    particles(1, idx:idx+particles_per_waypoint-1) = waypoints(i, 1) + 0.4 * randn(1, particles_per_waypoint);
+    particles(2, idx:idx+particles_per_waypoint-1) = waypoints(i, 2) + 0.4 * randn(1, particles_per_waypoint); 
     particles(3, idx:idx+particles_per_waypoint-1) = 2 * pi * rand(1, particles_per_waypoint);
     idx = idx + particles_per_waypoint;
 end
@@ -39,12 +39,45 @@ end
 % initalize spin
 turnW = 0.2;
 wheel2center = 0.13;
-variance_threshold = 0.005;
 heading_threshold = 0.05;
 dataStore = struct('odometry', [], ...
                    'rsdepth', [], ...
                    'beacon', []);
 noRobotCount = 0;
+total_angle_turned = 0;
+frame_counter = 0;
+resample_interval = 20;
+
+% =========================================================================
+% --- VISUALIZATION SETUP ---
+% =========================================================================
+figure(1); clf; hold on; grid on; axis equal;
+title('Particle Filter Initialization');
+xlabel('X (m)'); ylabel('Y (m)');
+
+% Plot Waypoints as blue pentagrams
+plot(waypoints(:,1), waypoints(:,2), 'bp', 'MarkerSize', 12, 'MarkerFaceColor', 'b', 'DisplayName', 'Waypoints');
+
+% Plot Beacons as red squares
+if ~isempty(beacons)
+    plot(beacons(:,2), beacons(:,3), 'rs', 'MarkerSize', 10, 'MarkerFaceColor', 'r', 'DisplayName', 'Beacons');
+end
+
+% Plot initial Particles as slightly larger RED dots
+h_particles = plot(particles(1,:), particles(2,:), 'r.', 'MarkerSize', 5, 'DisplayName', 'Particles');
+legend('Location', 'best');
+
+% --- NEW CODE: Freeze the axis limits ---
+% Calculate the boundaries of your map based on the waypoints
+min_x = min(waypoints(:,1)) - 2;
+max_x = max(waypoints(:,1)) + 2;
+min_y = min(waypoints(:,2)) - 2;
+max_y = max(waypoints(:,2)) + 2;
+
+% Force MATLAB to lock the zoom to this bounding box
+axis([min_x max_x min_y max_y]);
+axis manual;
+% =========================================================================
 
 % run filter
 while true
@@ -59,6 +92,7 @@ while true
     d = odom(2);
     phi = odom(3);
     u = [d; phi];
+    total_angle_turned = total_angle_turned + abs(phi);
 
     % extract sensor measurements
     depth = dataStore.rsdepth(end, :);
@@ -75,67 +109,76 @@ while true
                 global_bx = beacons(beacon_map_idx, 2);
                 global_by = beacons(beacon_map_idx, 3);
                 
-                % find closest waypoint to the beacon
-                min_dist = inf;
-                starting_idx = -1;
-                for i = 1:k
-                    dist = sqrt((waypoints(i,1) - global_bx)^2 + (waypoints(i,2) - global_by)^2);
-                    if dist < min_dist
-                        min_dist = dist;
-                        starting_idx = i;
-                    end
-                end
-                
-                % look for particles within 0.5 meters of the correct waypoint
-                dist_to_target = sqrt((particles(1,:) - waypoints(starting_idx,1)).^2 + ...
-                                      (particles(2,:) - waypoints(starting_idx,2)).^2);
-                
-                correct_particles = particles(:, dist_to_target < 0.5); 
+                dist_to_beacon = sqrt((particles(1,:) - global_bx).^2 + (particles(2,:) - global_by).^2);
+
+                correct_particles = particles(:, dist_to_beacon < 3.0); 
                 
                 if ~isempty(correct_particles)
                     % resample the correct particles to fill back up to M
                     resample_idx = randi(size(correct_particles, 2), 1, M);
                     particles = correct_particles(:, resample_idx);
                     
-                    disp(['Beacon ', num2str(seen_id), ' detected! Collapsed particles to waypoint ', num2str(starting_idx)]);
+                    disp(['Beacon ', num2str(seen_id), ' detected! Filtered out particles far from beacon.']);
                 end
                 
-                dataStore.beacon = []; 
+                dataStore.beacon = [];
+                                
             end
         end
     end
 
-    % run particle filter
-    [particles, ~] = PF(particles, u, z, R, Q, predict, update);
+    % run particle filter in intervals
+    frame_counter = frame_counter + 1;
+    if mod(frame_counter, resample_interval) == 0
+        [particles, ~] = PF(particles, u, z, R, Q, predict, update);
+    else
+        for i = 1:M
+             particles(:, i) = predict(particles(:, i), u(1), u(2)) + randn(3,1) .* sqrt(diag(R));
+        end
+    end
+
+
+    % =====================================================================
+    % --- VISUALIZATION UPDATE ---
+    % =====================================================================
+    % Update the x and y data of the particle plot handle
+    set(h_particles, 'XData', particles(1,:), 'YData', particles(2,:));
+    drawnow limitrate; % Forces MATLAB to update the figure window
+    % ====================================================================
 
     % check if particle filter converged
-    var_x = var(particles(1, :));
-    var_y = var(particles(2, :));
-
-    R_theta = sqrt(mean(cos(particles(3,:)))^2 + mean(sin(particles(3,:)))^2);
-    var_theta = 1 - R_theta;
-
-    if (var_x < variance_threshold) && (var_y < variance_threshold) && (var_theta < heading_threshold)
-        mean_x = mean(particles(1, :));
-        mean_y = mean(particles(2, :));
+    required_particles = 0.90 * M; 
+    has_converged = false;
+    
+    for i = 1:k
+        % calculate distance from all particles to this waypoint
+        dist_to_wp = sqrt((particles(1,:) - waypoints(i,1)).^2 + ...
+                          (particles(2,:) - waypoints(i,2)).^2);
         
-        % find closest waypoint
-        min_dist = inf;
-        starting_idx = -1;
-        for i = 1:k
-            dist = sqrt((waypoints(i,1) - mean_x)^2 + (waypoints(i,2) - mean_y)^2);
-            if dist < min_dist
-                min_dist = dist;
+        % find particles near this waypoint
+        cluster_mask = (dist_to_wp < 0.5);
+        num_in_cluster = sum(cluster_mask);
+        
+        if num_in_cluster > required_particles
+            cluster_particles = particles(:, cluster_mask);
+            R_theta = sqrt(mean(cos(cluster_particles(3,:)))^2 + mean(sin(cluster_particles(3,:)))^2);
+            var_theta = 1 - R_theta;
+            
+            if var_theta < heading_threshold
+                has_converged = true;
                 starting_idx = i;
+                mean_theta = atan2(mean(sin(cluster_particles(3, :))), mean(cos(cluster_particles(3, :))));
+                break;
             end
         end
-        
-        % set inital location to exact waypoint
+    end
+    
+    if has_converged && (total_angle_turned > 2 * pi)
+        % set initial location to waypoint
         init_x = waypoints(starting_idx, 1);
         init_y = waypoints(starting_idx, 2);
-
         SetFwdVelAngVelCreate(Robot, 0, 0);
-        mean_theta = atan2(mean(sin(particles(3, :))), mean(cos(particles(3, :))));
+        disp(['Converged! Starting at waypoint ', num2str(starting_idx)]);
         break;
     end
 

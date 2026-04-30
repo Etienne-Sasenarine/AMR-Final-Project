@@ -9,7 +9,7 @@ function initial_pose = testInitLocalize(Robot)
 %       initial_pose    3-by-1 state vector [x; y; theta] of the start pose
 
 % 1. Load the map data
-    mapData = load('C:\Users\etien\cs4758\AMR-Final-Project.mat');
+    mapData = load("PracticeMap2026.mat");
     waypoints = mapData.waypoints;
     beacons = mapData.beaconLoc; 
     map = mapData.map; 
@@ -28,7 +28,7 @@ function initial_pose = testInitLocalize(Robot)
     angles = linspace(-27*(pi/180), 27*(pi/180), num_depth_sensors); 
 
     % 4. Define Noise Matrices
-    R = diag([0.01, 0.01, 0.05]); 
+    R = diag([0.0001, 0.0001, 0.001]);
     Q = 0.1 * eye(num_depth_sensors); % Now correctly matches the size of z
 
     % 5. Define Function Handles

@@ -37,31 +37,53 @@ end
 
 % update step
 weights = zeros(1, M);
+max_rs_range = 4.0;
+
 for i = 1:M
     expected_z = update(predicted_particles(:, i));
-
+    
     if all(isnan(expected_z))
         weights(i) = -inf;
         continue;
     end
-
+    
     logWeight = 0;
     for j = 1:k
-        if ~isnan(z(j)) && ~isnan(expected_z(j))
-            logWeight = logWeight + (-0.5 * (z(j) - expected_z(j))^2 / Q(j,j) ...
-                - 0.5 * log(2*pi*Q(j,j)));
+        val_z = z(j);
+        val_exp = expected_z(j);
+        
+        if isnan(val_z)
+            if val_exp > max_rs_range || isnan(val_exp)
+                logWeight = logWeight + 0; 
+            else
+                logWeight = logWeight - 50; 
+            end
+            
+        else
+            if isnan(val_exp) || val_exp > max_rs_range
+                logWeight = logWeight - 50;
+            else
+                logWeight = logWeight + (-0.5 * (val_z - val_exp)^2 / Q(j,j) ...
+                    - 0.5 * log(2*pi*Q(j,j)));
+            end
         end
     end
     weights(i) = logWeight;
 end
 
-% convert from log weights
-weights = weights - max(weights);
-weights = exp(weights);
+max_w = max(weights);
 
-% normalize weights
-weights = weights + 1e-300;
-weights = weights / sum(weights);
+if max_w == -inf
+    weights = ones(1, M) / M;
+else
+    % convert from log weights
+    weights = weights - max_w;
+    weights = exp(weights);
+    
+    % normalize weights
+    weights = weights + 1e-300;
+    weights = weights / sum(weights);
+end
 
 % resampling step
 particles = zeros(3, M);

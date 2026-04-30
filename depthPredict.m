@@ -45,9 +45,8 @@ for k = 1:K
             rayEnd(1), rayEnd(2), map(i,1), map(i,2), map(i,3), map(i,4)); 
         if isect
             distance = norm([xi; yi] - sensorWorld);
-            projected_depth = distance * cos(angles(k));
-            if projected_depth < depth(k) || isnan(depth(k))
-                depth(k) = projected_depth;
+            if distance < depth(k) || isnan(depth(k))
+                depth(k) = distance;
             end
         end
     end

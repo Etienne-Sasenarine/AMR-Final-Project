@@ -42,11 +42,11 @@ end
                                toc poseX poseY poseTheta];
             noRobotCount = 0;
         catch
-            disp('Overhead localization lost the robot!')
+            %disp('Overhead localization lost the robot!')
             noRobotCount = noRobotCount + 1;
         end
     catch
-        disp('Error retrieving or saving overhead localization data.');
+        %disp('Error retrieving or saving overhead localization data.');
     end
     
     %read odometry distance & angle
@@ -68,7 +68,7 @@ end
         dataStore.bump = [dataStore.bump ; toc ...
             BumpRight BumpLeft DropRight DropLeft DropCaster BumpFront];
     catch
-        disp('Error retrieving or saving bump sensor data.');
+        %disp('Error retrieving or saving bump sensor data.');
     end
     
 
@@ -79,7 +79,7 @@ end
         depth_array = RealSenseDist(Robot);
         dataStore.rsdepth = [dataStore.rsdepth ; toc depth_array'];
     catch
-        disp('Error retrieving or saving RealSense depth data.');
+        %disp('Error retrieving or saving RealSense depth data.');
     end
 
     %read camera data (beacons)
@@ -89,5 +89,5 @@ end
             dataStore.beacon = [dataStore.beacon ; repmat(toc,size(tags,1),1) tags];
         end
     catch
-        disp('Error retrieving or saving beacon (AprilTag) data.');
+        %disp('Error retrieving or saving beacon (AprilTag) data.');
     end
