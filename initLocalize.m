@@ -27,7 +27,7 @@ SetFwdVelAngVelCreate(Robot, 0,0);
 k = size(waypoints, 1);
 dataStore = struct('odometry', [], 'rsdepth', [], 'beacon', []);
 noRobotCount = 0;
-turnW = 0.2;
+turnW = 0.3;
 wheel2center = 0.13;
 max_sensor_range = 3.0;
 
@@ -85,20 +85,32 @@ end
 SetFwdVelAngVelCreate(Robot, 0, 0);
 
 % match tags to waypoints
-scores = zeros(k, 1);
-for i = 1:k
-    expected_tags = visibility_map{i};
-    scores(i) = length(intersect(seen_tags, expected_tags));
-end
-
-max_score = max(scores);
-best_wp_indices = find(scores == max_score);
-
-% initalize everywhere if no tags seen
-if max_score == 0 || isempty(seen_tags)
-    disp('No tags matched or seen! Falling back to all waypoints.');
-    best_wp_indices = 1:k; 
+if isempty(seen_tags)
+    disp('No tags seen! Filtering for waypoints that also expect zero tags...');
+    best_wp_indices = [];
+    for i = 1:k
+        if isempty(visibility_map{i})
+            best_wp_indices = [best_wp_indices, i];
+        end
+    end
+    
+    % if all waypoints see tags saftey fallback
+    if isempty(best_wp_indices)
+        disp('Warning: All waypoints expect tags, but none seen. Falling back to all waypoints.');
+        best_wp_indices = 1:k;
+    else
+        disp(['Blind spot matching complete. Initializing at waypoint(s): ', num2str(best_wp_indices)]);
+    end
+    
 else
+    scores = zeros(k, 1);
+    for i = 1:k
+        expected_tags = visibility_map{i};
+        scores(i) = length(intersect(seen_tags, expected_tags));
+    end
+    max_score = max(scores);
+    best_wp_indices = find(scores == max_score);
+    
     disp(['Matching complete. Initializing at waypoint(s): ', num2str(best_wp_indices')]);
 end
 
@@ -134,8 +146,6 @@ disp('Dialing in exact pose with Particle Filter...');
 total_angle_turned = 0;
 heading_threshold = 0.05;
 required_particles = 0.75 * M;
-frame_counter = 0;
-resample_interval = 15;
 max_wander_dist = 1;
 
 is_global_search = length(best_wp_indices) > 1;
@@ -158,14 +168,7 @@ while true
     depth = dataStore.rsdepth(end, :);
     z = depth(2:end)';
     
-    frame_counter = frame_counter + 1;
-    if mod(frame_counter, resample_interval) == 0
-        [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
-    else
-        for i = 1:M
-             particles(:, i) = predict(particles(:, i), u(1), u(2)) + randn(3,1) .* sqrt(diag(R));
-        end
-    end
+    [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
 
     % find the minimum distance from each particle to any active waypoint
     min_dist_to_wps = inf(1, M);
