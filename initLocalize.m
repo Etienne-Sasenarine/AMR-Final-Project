@@ -136,6 +136,7 @@ heading_threshold = 0.05;
 required_particles = 0.75 * M;
 frame_counter = 0;
 resample_interval = 15;
+max_wander_dist = 1;
 
 is_global_search = length(best_wp_indices) > 1;
 if is_global_search
@@ -165,6 +166,30 @@ while true
              particles(:, i) = predict(particles(:, i), u(1), u(2)) + randn(3,1) .* sqrt(diag(R));
         end
     end
+
+    % find the minimum distance from each particle to any active waypoint
+    min_dist_to_wps = inf(1, M);
+    for idx_wp = 1:length(best_wp_indices)
+        wp_x = waypoints(best_wp_indices(idx_wp), 1);
+        wp_y = waypoints(best_wp_indices(idx_wp), 2);
+        dist = sqrt((particles(1,:) - wp_x).^2 + (particles(2,:) - wp_y).^2);
+        min_dist_to_wps = min(min_dist_to_wps, dist);
+    end
+    
+    % check if particles went past max distance
+    stray_mask = min_dist_to_wps > max_wander_dist;
+    num_strays = sum(stray_mask);
+    
+    % respawn dead particles directly on top of the valid waypoints
+    if num_strays > 0
+        random_wps = best_wp_indices(randi(length(best_wp_indices), 1, num_strays));
+        particles(1, stray_mask) = waypoints(random_wps, 1)' + 0.4 * randn(1, num_strays);
+        particles(2, stray_mask) = waypoints(random_wps, 2)' + 0.4 * randn(1, num_strays);
+        particles(3, stray_mask) = 2 * pi * rand(1, num_strays);
+    end
+
+
+    % ======================================
     
     set(h_particles, 'XData', particles(1,:), 'YData', particles(2,:));
     drawnow limitrate;
@@ -188,8 +213,13 @@ while true
             end
         end
     end
+
+    min_angle_required = pi;
+    if is_global_search
+        min_angle_required = 2 * pi; 
+    end
     
-    if has_converged && (total_angle_turned > pi) 
+    if has_converged && (total_angle_turned > min_angle_required) 
         init_x = waypoints(starting_idx, 1); 
         init_y = waypoints(starting_idx, 2);
         SetFwdVelAngVelCreate(Robot, 0, 0);
