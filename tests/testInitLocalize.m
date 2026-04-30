@@ -29,7 +29,7 @@ function initial_pose = testInitLocalize(Robot)
 
     % 4. Define Noise Matrices
     R = diag([0.0001, 0.0001, 0.001]);
-    Q = 0.1 * eye(num_depth_sensors); % Now correctly matches the size of z
+    Q = 2 * eye(num_depth_sensors); % Now correctly matches the size of z
 
     % 5. Define Function Handles
     predict_func = @integrateOdom;

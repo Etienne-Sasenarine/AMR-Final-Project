@@ -29,7 +29,7 @@ for i = 1:M
     predicted_particles(:, i) = mu_bar + randn(3,1) .* sqrt(diag(R));
 end
 
-if isempty(z)
+if isempty(z) || all(isnan(z))
     particles = predicted_particles;
     weights = ones(1, M) / M;
     return;
@@ -43,7 +43,7 @@ for i = 1:M
     expected_z = update(predicted_particles(:, i));
     
     if all(isnan(expected_z))
-        weights(i) = -inf;
+        weights(i) = -1000;
         continue;
     end
     
@@ -73,7 +73,7 @@ end
 
 max_w = max(weights);
 
-if max_w == -inf
+if max_w == -1000 || all(weights == -inf)
     weights = ones(1, M) / M;
 else
     % convert from log weights
@@ -87,15 +87,19 @@ end
 
 % resampling step
 particles = zeros(3, M);
-cdf = cumsum(weights);
 r = rand() / M;
+c = weights(1);
+i = 1;
+
 for m = 1:M
-    j = 1;
-    target = r + (m - 1) / M;
-    while j < M && cdf(j) < target
-        j = j + 1;
+    U = r + (m - 1) / M;
+    while U > c && i < M
+        i = i + 1;
+        c = c + weights(i);
     end
-    particles(:, m) = predicted_particles(:, j);
+    particles(:, m) = predicted_particles(:, i);
 end
+
+weights = ones(1, M) / M;
 
 end

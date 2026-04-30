@@ -24,7 +24,7 @@ SetFwdVelAngVelCreate(Robot, 0,0);
 
 % initalize particles
 k = size(waypoints, 1);
-particles_per_waypoint = 1000; % tune for how many particles per waypoint
+particles_per_waypoint = 500; % tune for how many particles per waypoint
 M = particles_per_waypoint * k;
 particles = zeros(3, M);
 % tight clusters of particles around each waypoint with uniform random orientation
@@ -106,6 +106,8 @@ while true
             beacon_map_idx = find(beacons(:, 1) == seen_id, 1);
             
             if ~isempty(beacon_map_idx)
+                disp(['Beacon ', num2str(seen_id), ' detected!']);
+
                 global_bx = beacons(beacon_map_idx, 2);
                 global_by = beacons(beacon_map_idx, 3);
                 
@@ -117,6 +119,8 @@ while true
                     % resample the correct particles to fill back up to M
                     resample_idx = randi(size(correct_particles, 2), 1, M);
                     particles = correct_particles(:, resample_idx);
+                    particles(1:2, :) = particles(1:2, :) + 0.15 * randn(2, M); 
+                    particles(3, :) = particles(3, :) + 0.1 * randn(1, M);
                     
                     disp(['Beacon ', num2str(seen_id), ' detected! Filtered out particles far from beacon.']);
                 end
