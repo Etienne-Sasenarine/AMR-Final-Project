@@ -112,7 +112,7 @@ for i = 1:length(best_wp_indices)
     wp_idx = best_wp_indices(i);
     particles(1, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 1) + 0.4 * randn(1, particles_per_wp);
     particles(2, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 2) + 0.4 * randn(1, particles_per_wp); 
-    particles(3, idx:idx+particles_per_wp-1) = sweep_angle_turned + 0.2 * randn(1, particles_per_wp);
+    particles(3, idx:idx+particles_per_wp-1) = 2 * pi * rand(1, particles_per_wp);
     idx = idx + particles_per_wp;
 end
 
@@ -134,6 +134,16 @@ disp('Dialing in exact pose with Particle Filter...');
 total_angle_turned = 0;
 heading_threshold = 0.05;
 required_particles = 0.75 * M;
+frame_counter = 0;
+resample_interval = 15;
+
+is_global_search = length(best_wp_indices) > 1;
+if is_global_search
+    disp('Global Search Mode: Relaxing measurement noise to prevent false convergence.');
+    active_Q = Q * 40;
+else
+    active_Q = Q;
+end
 
 while true
     [cmdV, cmdW] = limitCmds(0, turnW, 0.2, wheel2center);
@@ -147,7 +157,14 @@ while true
     depth = dataStore.rsdepth(end, :);
     z = depth(2:end)';
     
-    [particles, ~] = PF(particles, u, z, R, Q, predict, update);
+    frame_counter = frame_counter + 1;
+    if mod(frame_counter, resample_interval) == 0
+        [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
+    else
+        for i = 1:M
+             particles(:, i) = predict(particles(:, i), u(1), u(2)) + randn(3,1) .* sqrt(diag(R));
+        end
+    end
     
     set(h_particles, 'XData', particles(1,:), 'YData', particles(2,:));
     drawnow limitrate;
@@ -173,10 +190,10 @@ while true
     end
     
     if has_converged && (total_angle_turned > pi) 
-        init_x = mean(cluster_particles(1,:));
-        init_y = mean(cluster_particles(2,:));
+        init_x = waypoints(starting_idx, 1); 
+        init_y = waypoints(starting_idx, 2);
         SetFwdVelAngVelCreate(Robot, 0, 0);
-        disp(['Converged! Starting near waypoint ', num2str(starting_idx)]);
+        disp(['Converged! Starting at waypoint ', num2str(starting_idx)]);
         break;
     end
     pause(0.05); 
