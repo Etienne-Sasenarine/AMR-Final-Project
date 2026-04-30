@@ -37,7 +37,7 @@ for i = 1:k
 end
 
 % initalize spin
-turnW = 0.4;
+turnW = 0.2;
 wheel2center = 0.13;
 variance_threshold = 0.005;
 heading_threshold = 0.05;

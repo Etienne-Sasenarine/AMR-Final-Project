@@ -9,7 +9,7 @@ function initial_pose = testInitLocalize(Robot)
 %       initial_pose    3-by-1 state vector [x; y; theta] of the start pose
 
 % 1. Load the map data
-    mapData = load('C:\Users\etien\cs4758\AMR-Final-Project\practiceMap2026_4credit.mat');
+    mapData = load('C:\Users\etien\cs4758\AMR-Final-Project.mat');
     waypoints = mapData.waypoints;
     beacons = mapData.beaconLoc; 
     map = mapData.map; 
