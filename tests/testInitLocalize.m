@@ -41,3 +41,4 @@ function initial_pose = testInitLocalize(Robot)
     
     disp('Localization complete. Final Pose:');
     disp(initial_pose);
+    

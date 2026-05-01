@@ -1,8 +1,14 @@
-function [dataStore] = finalCompetition(Robot)%(Robot, maxTime, offset_x, offset_y)
-% main function for AMR final competition
+function initial_pose = testInitLocalize(Robot)
+% runInitLocalize: Wrapper function to execute the initial localization
+% sequence using a specific practice map and predefined noise matrices.
+%
+%   INPUTS
+%       Robot           Robot object
+%
+%   OUTPUTS
+%       initial_pose    3-by-1 state vector [x; y; theta] of the start pose
 
-%% Initial Localizaiton
-%1. Load the map data
+% 1. Load the map data
     mapData = load("PracticeMap2026.mat");
     waypoints = mapData.waypoints;
     beacons = mapData.beaconLoc; 
@@ -36,18 +42,5 @@ function [dataStore] = finalCompetition(Robot)%(Robot, maxTime, offset_x, offset
     disp('Localization complete. Final Pose:');
     disp(initial_pose);
 
-    %% set starting point for PRM 
-    disp("here")
-    waypoint_idx = 1;
-    dist = 100;
-    for i = 1:size(waypoints,1)
-        distCurr = norm(initial_pose - waypoints(i));
-        if  distCurr < dist
-            dist = distCurr; 
-            waypoint_idx = i; 
-        end
-    end
-    disp(waypoints)
-    disp(waypoint_idx);
-    testVisitWaypoints(Robot,waypoint_idx);
-
+    %% match to waypoint index
+    waypoint 
