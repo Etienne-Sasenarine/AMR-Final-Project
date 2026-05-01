@@ -3,11 +3,11 @@ function testVisitWaypoints(Robot, startIdx)
 % 
 %   INPUTS
 %       Robot       iRobot Create object (from simulator initialization)
-%       startIdx    (Optional) Index of the starting waypoint. Defaults to 1.
+%       startIdx    (Optional) Index of the starting waypoint. Defaults to 4.
 
     % Handle optional startIdx argument
     if nargin < 2
-        startIdx = 1; 
+        startIdx = 3; 
     end
 
     % ---------------------------------------------------------
@@ -38,6 +38,13 @@ function testVisitWaypoints(Robot, startIdx)
     % Combine start pose and unvisited waypoints for the PRM/TSP planner
     target_waypoints = [start_pose; unvisitedWaypoints];
     num_targets = size(target_waypoints, 1);
+
+    % *** NEW: Load the EC waypoints list ***
+    if isfield(mapData, 'ECwaypoints')
+        unvisitedECWaypoints = mapData.ECwaypoints;
+    else
+        unvisitedECWaypoints = []; 
+    end
     
     % ---------------------------------------------------------
     % 2. PLANNING PHASE
@@ -108,28 +115,38 @@ function testVisitWaypoints(Robot, startIdx)
         y = dataStore.truthPose(end, 3);
         theta = dataStore.truthPose(end, 4);
         
-        % Call your visitWaypoints function
+        % 1. Call your visitWaypoints function for regular navigation
         [cmdV, cmdW, prmIdx, unvisitedWaypointsNew] = visitWaypoints(...
             x, y, theta, physical_path_coords, prmIdx, unvisitedWaypoints, epsilon);
             
-        % Check if a waypoint was removed (meaning we scored!)
+        % 2. Check if a regular waypoint was reached
         if size(unvisitedWaypointsNew, 1) < size(unvisitedWaypoints, 1)
             SetFwdVelAngVelCreate(Robot, 0, 0);
+            try beepCreate(Robot); catch; beep; end
+            disp(['SCORE! Remaining regular waypoints: ', num2str(size(unvisitedWaypointsNew, 1))]);
+            pause(0.5); 
+        end
+        unvisitedWaypoints = unvisitedWaypointsNew;
+
+        % *** 3. NEW: Opportunistic Drive-By Scoring for EC Waypoints ***
+        for i = 1:size(unvisitedECWaypoints, 1)
+            dist_to_ec = norm([x, y] - unvisitedECWaypoints(i, :));
             
-            % Trigger the competition-required beep [cite: 154]
-            try
-                beepCreate(Robot); 
-            catch
-                beep; % Fallback to MATLAB system beep if beepCreate isn't loaded
+            % The competition allows declaring a waypoint reached if at most 0.2m away 
+            if dist_to_ec <= 0.2 
+                SetFwdVelAngVelCreate(Robot, 0, 0);
+                try beepCreate(Robot); catch; beep; end
+                
+                disp(['*** EXTRA CREDIT SCORE at (', num2str(unvisitedECWaypoints(i,1)), ', ', num2str(unvisitedECWaypoints(i,2)), ')! ***']);
+                
+                % Remove the scored EC waypoint so we don't double-score it
+                unvisitedECWaypoints(i, :) = [];
+                pause(0.5); % Brief pause to stabilize
+                break; % Exit the EC check loop for this tick
             end
-            
-            disp(['SCORE! Remaining waypoints: ', num2str(size(unvisitedWaypointsNew, 1))]);
-            pause(0.5); % Brief pause to stabilize after scoring
         end
         
-        unvisitedWaypoints = unvisitedWaypointsNew;
-        
-        % Enforce speed limits and send commands
+        % 4. Enforce speed limits and send commands
         [cmdV, cmdW] = limitCmds(cmdV, cmdW, maxV, wheel2center);
         SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
         
@@ -141,11 +158,17 @@ function testVisitWaypoints(Robot, startIdx)
         
         pause(0.1);
     end
+    
     % Stop the robot cleanly
     SetFwdVelAngVelCreate(Robot, 0, 0);
     
     if isempty(unvisitedWaypoints)
-        disp('MISSION ACCOMPLISHED: All waypoints successfully visited!');
+        disp('MISSION ACCOMPLISHED: All regular waypoints successfully visited!');
+        if isempty(unvisitedECWaypoints)
+             disp('PLUS: All EC waypoints were collected!');
+        else
+             disp(['Missed ', num2str(size(unvisitedECWaypoints, 1)), ' EC waypoints.']);
+        end
     else
         disp('MISSION ENDED: Time limit reached or path exhausted.');
     end
