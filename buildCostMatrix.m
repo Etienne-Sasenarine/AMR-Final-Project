@@ -1,4 +1,4 @@
-function costMatrix = buildCostMatrix(roadmap, waypoints)
+function [costMatrix, parentMatrix] = buildCostMatrix(roadmap, waypoints)
 % buildCostMatrix: Runs Dijkstra's algorithm to compute the shortest
 % distance between all pairs of waypoints in a PRM
 %
@@ -8,11 +8,13 @@ function costMatrix = buildCostMatrix(roadmap, waypoints)
 %
 %   OUTPUTS
 %       costMatrix     T-by-T matrix of shortest path distances
+%       parentMatrix   T-by-N matrix of parent nodes from waypoint(i)
 
 % define variables
 N = size(roadmap.nodes, 1);
 T = length(waypoints);
 costMatrix = zeros(T, T);
+parentMatrix = zeros(T, N);
 
 % build adjacency list
 adj = cell(N, 1);
@@ -33,6 +35,7 @@ for i = 1:T
     distances = inf(N, 1);
     distances(src) = 0;
     visited = false(N, 1);
+    parents = zeros(N, 1);
 
     for j = 1:N
         % find closest node
@@ -59,15 +62,17 @@ for i = 1:T
                 alt = distances(u) + w;
                 if alt < distances(v)
                     distances(v) = alt;
+                    parents(v) = u;
                 end
             end
         end
     end
 
-    % store in cost matrix
+    % store in cost matrix and parent matrix
     for j = 1:T
         distance = waypoints(j);
         costMatrix(i, j) = distances(distance);
     end
+    parentMatrix(i, :) = parents;
 end
 end

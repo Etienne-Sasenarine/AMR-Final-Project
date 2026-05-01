@@ -56,6 +56,7 @@ for i = 1:k
     visibility_map{i} = visible_tags;
 end
 disp('Visibility map computed!');
+disp(visibility_map)
 
 % full 360 degree rotation to find tags
 disp('Starting 360-degree sweep to find tags...');

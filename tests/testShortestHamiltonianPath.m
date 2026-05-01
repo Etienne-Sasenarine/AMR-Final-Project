@@ -5,7 +5,7 @@ clear; clc; close all;
 
 % 1. Load Map Data
 % Load the provided .mat practice map
-mapData = load('C:\Users\etien\cs4758\AMR-Final-Project\practiceMap2026_4credit.mat');
+mapData = load('PracticeMap2026.mat');
 
 % Extract variables
 map = mapData.map;
@@ -16,7 +16,7 @@ standard_waypoints = mapData.waypoints;
 boundaries = [-3.048, 3.048, -2.286, 2.286]; 
 
 % Define a dummy start pose near the center
-start_pose = [0, 0];
+start_pose = standard_waypoints(1,:);
 
 % Combine start pose and waypoints into our targets list
 target_waypoints = [start_pose; standard_waypoints];
@@ -26,7 +26,7 @@ num_targets = size(target_waypoints, 1);
 all_walls = [map; optWalls];
 
 % 2. Build the PRM
-numSamples = 500; 
+numSamples = 2500; 
 robot_radius = 0.2; 
 
 disp('Building PRM...');
@@ -41,7 +41,7 @@ disp('Calculating Cost Matrix...');
 tic;
 % Because we injected our targets first, they are nodes 1 through num_targets
 target_indices = 1:num_targets;
-cost_matrix = buildCostMatrix(roadmap, target_indices);
+[cost_matrix, parent_matrix] = buildCostMatrix(roadmap, target_indices);
 toc;
 
 % 4. Display Results
@@ -78,6 +78,16 @@ else
         route_str = [route_str, ' -> Waypoint ', num2str(optimal_order(i)-1), ' (Node ', num2str(optimal_order(i)), ')'];
     end
     disp(['Optimal Order: ', route_str]);
+end
+
+if ~isempty(optimal_order)
+    disp('Extracting continuous low-level path...');
+    % Call your extractPath function to get the sequence of PRM nodes
+    low_level_node_path = extractPath(optimal_order, target_indices, parent_matrix);
+    
+    % Convert the node indices into physical (x,y) coordinates
+    physical_path_coords = roadmap.nodes(low_level_node_path, :);
+    disp(['Path extracted successfully. Total nodes in route: ', num2str(length(low_level_node_path))]);
 end
 
 % 5. Graphical Overlay of the Optimal Path
@@ -124,14 +134,18 @@ if ~isempty(optimal_order)
         end
     end
 
+    plot(physical_path_coords(:, 1), physical_path_coords(:, 2), 'b-', 'LineWidth', 2.5);
+
     % Add a legend
     % Dummy plots to ensure the legend grabs the right colors/styles
     plot(NaN, NaN, 'Color', [0.9 0.9 0.9], 'LineWidth', 1);
     plot(NaN, NaN, 'k', 'LineWidth', 2);
-    plot(NaN, NaN, 'm--', 'LineWidth', 2.5);
+    plot(NaN, NaN, 'm--', 'LineWidth', 1.5, 'Color', [1 0 1 0.4]);
+    plot(NaN, NaN, 'b-', 'LineWidth', 2.5);
     scatter(NaN, NaN, 200, 'g', 'p', 'filled');
     scatter(NaN, NaN, 100, 'r', 'o', 'filled');
     
-    legend('PRM Edges', 'Walls', 'TSP Tour Order', 'Start Pose', 'Waypoints', 'Location', 'northeastoutside');
+    legend('PRM Edges', 'Walls', 'High-Level Tour Order', 'Actual PRM Path', 'Start Pose', 'Waypoints', 'Location', 'northeastoutside');
     hold off;
 end
+
