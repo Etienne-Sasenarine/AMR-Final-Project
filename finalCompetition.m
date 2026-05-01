@@ -2,6 +2,11 @@ function [dataStore] = finalCompetition(Robot)%(Robot, maxTime, offset_x, offset
 % main function for AMR final competition
 
 %% Initial Localizaiton
+% Initialize Sensor Data Store
+    global dataStore
+    dataStore = struct('truthPose', [], 'odometry', [], 'rsdepth', [], 'bump', [], 'beacon', [], 'EKFPose', []);
+    noRobotCount = 0;
+
 %1. Load the map data
     mapData = load("PracticeMap2026.mat");
     waypoints = mapData.waypoints;
@@ -49,5 +54,6 @@ function [dataStore] = finalCompetition(Robot)%(Robot, maxTime, offset_x, offset
     end
     disp(waypoints)
     disp(waypoint_idx);
+    %perhaps change 
     testVisitWaypoints(Robot,waypoint_idx);
 
