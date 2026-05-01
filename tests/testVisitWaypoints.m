@@ -52,7 +52,7 @@ function testVisitWaypoints(Robot, startIdx)
     disp('--- PHASE 2: Motion Planning ---');
     
     % A. Build PRM
-    numSamples = 500; 
+    numSamples = 2000; 
     robot_radius = 0.2; 
     disp('Building PRM...');
     roadmap = buildPRM(all_walls, boundaries, numSamples, robot_radius, target_waypoints);
@@ -77,6 +77,9 @@ function testVisitWaypoints(Robot, startIdx)
     
     disp('Planning Complete! Ready to drive.');
     disp(' ');
+
+    disp(low_level_node_path)
+    disp(physical_path_coords)
     
     % ---------------------------------------------------------
     % 3. EXECUTION PHASE (CONTROL LOOP)
@@ -87,7 +90,7 @@ function testVisitWaypoints(Robot, startIdx)
     maxTime = 300;           
     maxV = 0.2;              % STRICT final competition speed limit [cite: 153]
     wheel2center = 0.13;     
-    epsilon = 0.15;          % Turn radius / lookahead distance
+    epsilon = 0.2;          % Turn radius / lookahead distance
     prmIdx = 1;
     
     % Initialize Sensor Data Store
