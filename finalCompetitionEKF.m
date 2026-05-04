@@ -93,7 +93,7 @@ function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle)
     disp(waypoints)
     disp(waypoint_idx);
     
-    nav_sigma = diag([0.05^2, 0.05^2, (20*pi/180)^2]);
+    nav_sigma = diag([0.05^2, 0.05^2, (45*pi/180)^2]);
     testVisitWaypointsEKF(Robot, waypoint_idx, refined_pose, nav_sigma);
 
 end

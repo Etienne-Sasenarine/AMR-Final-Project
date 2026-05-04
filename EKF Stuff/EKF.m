@@ -39,3 +39,4 @@ function [mu_next, sigma_next] = EKF(mu, ut, sigma, R, z, Q, dynamics, dynamicsJ
     mu_next(3) = atan2(sin(mu_next(3)), cos(mu_next(3)));
 
 end
+

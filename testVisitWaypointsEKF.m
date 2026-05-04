@@ -142,9 +142,9 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
     mu    = initial_pose(:);
     sigma = initial_sigma;
 
-    % EKF noise (tuned conservatively)
-    R_ekf  = diag([0.02^2, 0.02^2, (2*pi/180)^2]);
-    Q_dpth = 0.10^2 * eye(num_depth_sensors);
+    % EKF noise -- depth weighted heavily over odometry (R=0.01, Q=0.0025)
+    R_ekf  = 0.01 * eye(3);
+    Q_dpth = 0.0025 * eye(num_depth_sensors);
     Q_bcn  = diag([0.05^2, 0.05^2]);
 
     % Gating + Jacobian sanity bounds

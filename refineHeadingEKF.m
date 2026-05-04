@@ -126,13 +126,13 @@ function refined_pose = refineHeadingEKF(Robot, initial_pose, map, beaconLoc, se
     % PHASE 2: Fine 1D EKF on theta (position is NOT part of the state)
     % ====================================================================
     theta    = best_theta;
-    sigma_th = (15*pi/180)^2;                    % seed uncertainty after coarse
+    sigma_th = (30*pi/180)^2;                    % wider seed -- coarse can be 90 deg off
 
     R_th     = (3*pi/180)^2;                     % per-step process noise
-    Q_dpth   = 0.15^2 * eye(K);
+    Q_dpth   = 0.0025 * eye(K);                  % trust depth heavily (matches nav EKF)
     Q_bcn    = diag([0.07^2, 0.07^2]);
 
-    gate_threshold = 1.5;
+    gate_threshold = 2.5;                        % wider gate so wrong-basin corrections pass
     bcn_gate       = 1.5;
     H_cap          = 50;
     min_valid      = 0.1;
