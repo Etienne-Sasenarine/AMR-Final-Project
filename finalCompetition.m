@@ -41,7 +41,7 @@ function [dataStore] = finalCompetition(Robot)%(Robot, maxTime, offset_x, offset
     waypoint_idx = 1;
     dist = 100;
     for i = 1:size(waypoints,1)
-        distCurr = norm(initial_pose - waypoints(i));
+        distCurr = norm(initial_pose(1:2) - waypoints(i,:)');
         if  distCurr < dist
             dist = distCurr; 
             waypoint_idx = i; 

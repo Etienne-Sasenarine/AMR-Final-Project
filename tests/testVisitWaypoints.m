@@ -96,7 +96,7 @@ function testVisitWaypoints(Robot, startIdx)
     prmIdx = 1;
     
     % --- PF INITIALIZATION ---
-    M = 300; % Number of particles for continuous tracking
+    M = 50; % Number of particles for continuous tracking
     particles = zeros(3, M);
     
     % Seed particles around the start pose (Assuming initial heading is 0)
