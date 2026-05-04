@@ -192,7 +192,7 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma, sho
             rightBump = bump_row(2);
             leftBump  = bump_row(3);
             if frontBump || rightBump || leftBump
-                disp('[BUMP] Contact -- executing backup maneuver.');
+                %disp('[BUMP] Contact -- executing backup maneuver.');
                 SetFwdVelAngVelCreate(Robot, 0, 0);
                 pause(0.1);
                 [bV, bW] = limitCmds(-0.25, pi/6, 0.49, 0.13);
