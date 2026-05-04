@@ -165,11 +165,13 @@ function testVisitWaypoints(Robot, startIdx)
         dataStore.ekfMu = [dataStore.ekfMu; [current_time, mu']];
         
         % --------------------------------------------------------------
-        % NAVIGATION LOGIC (STRICTLY USING TRUTH POSE)
+        % NAVIGATION LOGIC (NOW STRICTLY USING EKF STATE)
         % --------------------------------------------------------------
-        x = dataStore.truthPose(end, 2);
-        y = dataStore.truthPose(end, 3);
-        theta = dataStore.truthPose(end, 4);
+        
+        % Extract current belief of position from EKF output vector
+        x = mu(1);
+        y = mu(2);
+        theta = mu(3);
         
         % 1. Call your visitWaypoints function for regular navigation
         [cmdV, cmdW, prmIdx, unvisitedWaypointsNew] = visitWaypoints(...
