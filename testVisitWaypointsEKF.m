@@ -1,4 +1,4 @@
-function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
+function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma, show_plots)
 % testVisitWaypointsEKF: Identical to testVisitWaypoints, but localizes
 % with an EKF (odom + RealSense depth + AprilTag beacons) instead of
 % reading from dataStore.truthPose.
@@ -7,10 +7,13 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
 %       Robot         iRobot Create object (sim or real)
 %       startIdx      Index of the starting waypoint
 %       initial_pose  3-by-1 [x; y; theta] from initLocalize
+%       initial_sigma 3-by-3 initial EKF covariance (optional)
+%       show_plots    logical, default true -- set false to skip all figures
 
     if nargin < 2,  startIdx = 3;                                               end
     if nargin < 3,  initial_pose = [0; 0; 0];                                   end
     if nargin < 4,  initial_sigma = diag([0.05^2, 0.05^2, (5*pi/180)^2]);      end
+    if nargin < 5,  show_plots = false;                                          end
 
     % ---------------------------------------------------------
     % 1. LOAD MAP & INITIALIZE
@@ -69,53 +72,56 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
     disp(' ');
 
     % ---------------------------------------------------------
-    % 2.5. LIVE TRAJECTORY PLOT
+    % 2.5. LIVE TRAJECTORY PLOT (skipped when show_plots = false)
     % ---------------------------------------------------------
-    fig_traj = figure('Name', 'EKF Localization vs TruthPose'); clf;
-    hold on; grid on; axis equal;
-    title('PRM plan, truthPose, and EKF estimate');
-    xlabel('X (m)'); ylabel('Y (m)');
+    fig_traj = -1;   % sentinel; ishandle(-1) is false, so loop update is a no-op
+    if show_plots
+        fig_traj = figure('Name', 'EKF Localization vs TruthPose'); clf;
+        hold on; grid on; axis equal;
+        title('PRM plan, truthPose, and EKF estimate');
+        xlabel('X (m)'); ylabel('Y (m)');
 
-    % Walls
-    for w = 1:size(map, 1)
-        plot(map(w, [1 3]), map(w, [2 4]), 'k-', 'LineWidth', 2);
-    end
-    if isfield(mapData, 'optWalls')
-        for w = 1:size(mapData.optWalls, 1)
-            plot(mapData.optWalls(w, [1 3]), mapData.optWalls(w, [2 4]), ...
-                 'Color', [0.6 0.6 0.6], 'LineStyle', '--', 'LineWidth', 1.2);
+        % Walls
+        for w = 1:size(map, 1)
+            plot(map(w, [1 3]), map(w, [2 4]), 'k-', 'LineWidth', 2);
         end
+        if isfield(mapData, 'optWalls')
+            for w = 1:size(mapData.optWalls, 1)
+                plot(mapData.optWalls(w, [1 3]), mapData.optWalls(w, [2 4]), ...
+                     'Color', [0.6 0.6 0.6], 'LineStyle', '--', 'LineWidth', 1.2);
+            end
+        end
+
+        % Waypoints / EC waypoints / beacons
+        h_wp  = plot(standard_waypoints(:,1), standard_waypoints(:,2), ...
+                     'bp', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
+        if ~isempty(unvisitedECWaypoints)
+            plot(unvisitedECWaypoints(:,1), unvisitedECWaypoints(:,2), ...
+                 'p', 'MarkerSize', 10, 'Color', [0 0.6 0], 'MarkerFaceColor', [0 0.8 0]);
+        end
+        if ~isempty(beaconLoc)
+            plot(beaconLoc(:,2), beaconLoc(:,3), 'rs', ...
+                 'MarkerSize', 9, 'MarkerFaceColor', 'r');
+        end
+
+        % Planned PRM path
+        h_prm = plot(physical_path_coords(:,1), physical_path_coords(:,2), ...
+                     'c-', 'LineWidth', 2);
+        plot(physical_path_coords(:,1), physical_path_coords(:,2), 'c.', 'MarkerSize', 10);
+
+        % Trajectory line handles (start empty; we'll grow them in the loop)
+        h_truth = plot(NaN, NaN, 'g-',  'LineWidth', 1.6);
+        h_ekf   = plot(NaN, NaN, 'r--', 'LineWidth', 1.6);
+        h_robot = plot(initial_pose(1), initial_pose(2), ...
+                       'ko', 'MarkerFaceColor', 'y', 'MarkerSize', 8);
+
+        legend([h_wp, h_prm, h_truth, h_ekf, h_robot], ...
+               {'Waypoints', 'PRM plan', 'truthPose', 'EKF \mu', 'Robot'}, ...
+               'Location', 'bestoutside');
+        axis([boundaries(1)-0.2, boundaries(2)+0.2, ...
+              boundaries(3)-0.2, boundaries(4)+0.2]);
+        drawnow;
     end
-
-    % Waypoints / EC waypoints / beacons
-    h_wp  = plot(standard_waypoints(:,1), standard_waypoints(:,2), ...
-                 'bp', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
-    if ~isempty(unvisitedECWaypoints)
-        plot(unvisitedECWaypoints(:,1), unvisitedECWaypoints(:,2), ...
-             'p', 'MarkerSize', 10, 'Color', [0 0.6 0], 'MarkerFaceColor', [0 0.8 0]);
-    end
-    if ~isempty(beaconLoc)
-        plot(beaconLoc(:,2), beaconLoc(:,3), 'rs', ...
-             'MarkerSize', 9, 'MarkerFaceColor', 'r');
-    end
-
-    % Planned PRM path
-    h_prm = plot(physical_path_coords(:,1), physical_path_coords(:,2), ...
-                 'c-', 'LineWidth', 2);
-    plot(physical_path_coords(:,1), physical_path_coords(:,2), 'c.', 'MarkerSize', 10);
-
-    % Trajectory line handles (start empty; we'll grow them in the loop)
-    h_truth = plot(NaN, NaN, 'g-',  'LineWidth', 1.6);
-    h_ekf   = plot(NaN, NaN, 'r--', 'LineWidth', 1.6);
-    h_robot = plot(initial_pose(1), initial_pose(2), ...
-                   'ko', 'MarkerFaceColor', 'y', 'MarkerSize', 8);
-
-    legend([h_wp, h_prm, h_truth, h_ekf, h_robot], ...
-           {'Waypoints', 'PRM plan', 'truthPose', 'EKF \mu', 'Robot'}, ...
-           'Location', 'bestoutside');
-    axis([boundaries(1)-0.2, boundaries(2)+0.2, ...
-          boundaries(3)-0.2, boundaries(4)+0.2]);
-    drawnow;
 
     plot_decim = 3;       % update plot every N control ticks
     tick = 0;
@@ -219,7 +225,21 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
             end
         end
 
-        % --- EKF UPDATE with AprilTag beacons ---
+        % --- BEACON HARD SNAP (full relocalization on each beacon sighting) ---
+        % Instead of a soft Kalman update, solve for (x, y, theta) exactly from
+        % the beacon constraint and hard-reset the pose.  This breaks the
+        % feedback loop where a wrong EKF theta corrupts control, which corrupts
+        % odometry integration, which makes the EKF diverge further.
+        %
+        % Math: given beacon obs z_bcn = [z1; z2] in robot frame and known
+        % global beacon bxy, and the current EKF (x,y) as a prior for bearing:
+        %   alpha      = atan2(z2, z1)              (measured bearing, robot frame)
+        %   psi        = atan2(by-y_mu, bx-x_mu)   (approx global direction)
+        %   theta_snap = psi - alpha
+        %   x_snap     = bx - (z1+sx)*cos(th) + z2*sin(th)
+        %   y_snap     = by - (z1+sx)*sin(th) - z2*cos(th)
+        % One refinement pass (updates psi using x_snap, y_snap) tightens the
+        % estimate when the EKF xy was slightly off.
         if ~isempty(dataStore.beacon)
             cur_beacon_idx = size(dataStore.beacon, 1);
             if cur_beacon_idx > last_beacon_idx
@@ -230,19 +250,39 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
 
                     bRow = beaconLoc(beaconLoc(:,1) == tagID, :);
                     if isempty(bRow), continue; end
-                    bxy  = bRow(1, 2:3)';
+                    bxy = bRow(1, 2:3)';
 
-                    z_hat_bcn = beaconPredict(mu, bxy, sensorOrigin);
-                    H_bcn     = beaconJac(mu, bxy, sensorOrigin);
+                    z1 = z_bcn(1);  z2 = z_bcn(2);
+                    r_obs = sqrt(z1^2 + z2^2);
+                    if r_obs < 0.1 || r_obs > 3.5, continue; end  % sensor range sanity
 
-                    innov = z_bcn - z_hat_bcn;
-                    if any(abs(innov) > bcn_gate), continue; end
+                    sx_off = sensorOrigin(1);
+                    alpha  = atan2(z2, z1);   % measured bearing in robot frame
 
-                    Kgain = sigma * H_bcn' / (H_bcn * sigma * H_bcn' + Q_bcn);
-                    mu    = mu + Kgain * innov;
-                    sigma = (eye(3) - Kgain * H_bcn) * sigma;
-                    sigma = 0.5 * (sigma + sigma');
-                    mu(3) = atan2(sin(mu(3)), cos(mu(3)));
+                    % Pass 1: use current EKF (x,y) to estimate global bearing -> theta
+                    psi       = atan2(bxy(2) - mu(2), bxy(1) - mu(1));
+                    th_snap   = atan2(sin(psi - alpha), cos(psi - alpha));
+                    x_snap    = bxy(1) - (z1 + sx_off)*cos(th_snap) + z2*sin(th_snap);
+                    y_snap    = bxy(2) - (z1 + sx_off)*sin(th_snap) - z2*cos(th_snap);
+
+                    % Pass 2 (refinement): re-estimate psi with the snapped (x,y)
+                    psi2      = atan2(bxy(2) - y_snap, bxy(1) - x_snap);
+                    th_snap   = atan2(sin(psi2 - alpha), cos(psi2 - alpha));
+                    x_snap    = bxy(1) - (z1 + sx_off)*cos(th_snap) + z2*sin(th_snap);
+                    y_snap    = bxy(2) - (z1 + sx_off)*sin(th_snap) - z2*cos(th_snap);
+
+                    % Validate: snap must land inside the map
+                    if x_snap < boundaries(1) || x_snap > boundaries(2) || ...
+                       y_snap < boundaries(3) || y_snap > boundaries(4)
+                        continue;
+                    end
+
+                    % Hard reset pose and tighten covariance
+                    mu    = [x_snap; y_snap; atan2(sin(th_snap), cos(th_snap))];
+                    sigma = diag([0.05^2, 0.05^2, (8*pi/180)^2]);
+
+                    fprintf('[BCN SNAP] Tag %d -> (%.2f, %.2f, %.0f deg)\n', ...
+                            tagID, mu(1), mu(2), mu(3)*180/pi);
                 end
                 last_beacon_idx = cur_beacon_idx;
             end

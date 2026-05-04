@@ -27,14 +27,13 @@ SetFwdVelAngVelCreate(Robot, 0,0);
 k = size(waypoints, 1);
 dataStore = struct('odometry', [], 'rsdepth', [], 'beacon', []);
 noRobotCount = 0;
-turnW = 0.3;
+turnW = 0.4;
 wheel2center = 0.13;
 max_sensor_range = 3.0;
 
 % find visibility map of tags for each waypoint
 disp('Computing Visibility Map with Line-of-Sight...');
 visibility_map = cell(k, 1); 
-
 for i = 1:k
     wp_x = waypoints(i, 1);
     wp_y = waypoints(i, 2);
@@ -62,8 +61,7 @@ disp(visibility_map)
 disp('Starting 360-degree sweep to find tags...');
 seen_tags = [];
 sweep_angle_turned = 0;
-
-while sweep_angle_turned < 2.1 * pi
+while sweep_angle_turned < 2.05 * pi 
     [cmdV, cmdW] = limitCmds(0, turnW, 0.2, wheel2center);
     SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
     
@@ -81,7 +79,7 @@ while sweep_angle_turned < 2.1 * pi
             end
         end
     end
-    pause(0.05);
+    pause(0.02);
 end
 SetFwdVelAngVelCreate(Robot, 0, 0);
 
@@ -115,47 +113,46 @@ else
     disp(['Matching complete. Initializing at waypoint(s): ', num2str(best_wp_indices')]);
 end
 
+% if only waypoint is matched
+if isscalar(best_wp_indices)
+    disp('Unique match found! Fast-tracking Particle Filter to resolve HEADING ONLY.');
+    particles_per_wp = 50; % Ultra-low compute since X and Y are known
+else
+    particles_per_wp = 200; % Normal optimization
+end
+
 % initalize particles
-particles_per_wp = 500;
 M = particles_per_wp * length(best_wp_indices);
 particles = zeros(3, M);
 idx = 1;
-
 for i = 1:length(best_wp_indices)
     wp_idx = best_wp_indices(i);
-    particles(1, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 1) + 0.4 * randn(1, particles_per_wp);
-    particles(2, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 2) + 0.4 * randn(1, particles_per_wp); 
+    
+    if isscalar(best_wp_indices)
+        spread = 0.05; 
+    else
+        spread = 0.3;
+    end
+    
+    particles(1, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 1) + spread * randn(1, particles_per_wp);
+    particles(2, idx:idx+particles_per_wp-1) = waypoints(wp_idx, 2) + spread * randn(1, particles_per_wp); 
     particles(3, idx:idx+particles_per_wp-1) = 2 * pi * rand(1, particles_per_wp);
     idx = idx + particles_per_wp;
 end
 
-% --- VISUALIZATION SETUP ---
-figure(1); clf; hold on; grid on; axis equal;
-title('Particle Filter Tracking'); xlabel('X (m)'); ylabel('Y (m)');
-plot(waypoints(:,1), waypoints(:,2), 'bp', 'MarkerSize', 12, 'MarkerFaceColor', 'b');
-if ~isempty(beacons)
-    plot(beacons(:,2), beacons(:,3), 'rs', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
-end
-h_particles = plot(particles(1,:), particles(2,:), 'r.', 'MarkerSize', 5);
-
-min_x = min(waypoints(:,1)) - 2; max_x = max(waypoints(:,1)) + 2;
-min_y = min(waypoints(:,2)) - 2; max_y = max(waypoints(:,2)) + 2;
-axis([min_x max_x min_y max_y]); axis manual;
-
 % run particle filter
 disp('Dialing in exact pose with Particle Filter...');
 total_angle_turned = 0;
-heading_threshold = 0.05;
-required_particles = 0.75 * M;
+heading_threshold = 0.1;
+required_particles = 0.65 * M;
 max_wander_dist = 1;
-last_odom_idx = size(dataStore.odometry, 1);
-
 is_global_search = length(best_wp_indices) > 1;
+
 if is_global_search
     disp('Global Search Mode: Relaxing measurement noise to prevent false convergence.');
-    active_Q = Q * 40;
+    active_Q = Q * 15;
 else
-    active_Q = Q;
+    active_Q = Q * 5;
 end
 
 while true
@@ -163,23 +160,16 @@ while true
     SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
     
     [noRobotCount, dataStore] = readStoreSensorData(Robot, noRobotCount, dataStore);
-
-    % Accumulate ALL new odometry rows since last PF step
-    cur_odom_idx = size(dataStore.odometry, 1);
-    if cur_odom_idx > last_odom_idx
-        new_odom_rows = dataStore.odometry(last_odom_idx+1:cur_odom_idx, :);
-        u = [sum(new_odom_rows(:, 2)); sum(new_odom_rows(:, 3))];
-        total_angle_turned = total_angle_turned + abs(u(2));
-        last_odom_idx = cur_odom_idx;
-    else
-        u = [0; 0];
-    end
-
-    depth = dataStore.rsdepth(end, :);
-    z = depth(2:end)';
+    odom = dataStore.odometry(end, :);
+    u = [odom(2); odom(3)];
+    total_angle_turned = total_angle_turned + abs(odom(3));
     
-    [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
-
+    if mod(size(dataStore.odometry, 1), 2) == 0
+        depth = dataStore.rsdepth(end, :);
+        z = depth(2:end)';
+        [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
+    end
+    
     % find the minimum distance from each particle to any active waypoint
     min_dist_to_wps = inf(1, M);
     for idx_wp = 1:length(best_wp_indices)
@@ -196,16 +186,10 @@ while true
     % respawn dead particles directly on top of the valid waypoints
     if num_strays > 0
         random_wps = best_wp_indices(randi(length(best_wp_indices), 1, num_strays));
-        particles(1, stray_mask) = waypoints(random_wps, 1)' + 0.4 * randn(1, num_strays);
-        particles(2, stray_mask) = waypoints(random_wps, 2)' + 0.4 * randn(1, num_strays);
+        particles(1, stray_mask) = waypoints(random_wps, 1)' + 0.3 * randn(1, num_strays);
+        particles(2, stray_mask) = waypoints(random_wps, 2)' + 0.3 * randn(1, num_strays);
         particles(3, stray_mask) = 2 * pi * rand(1, num_strays);
     end
-
-
-    % ======================================
-    
-    set(h_particles, 'XData', particles(1,:), 'YData', particles(2,:));
-    drawnow limitrate;
     
     has_converged = false;
     for i = 1:length(best_wp_indices)
@@ -213,7 +197,7 @@ while true
         dist_to_wp = sqrt((particles(1,:) - waypoints(wp_idx,1)).^2 + ...
                           (particles(2,:) - waypoints(wp_idx,2)).^2);
         
-        cluster_mask = (dist_to_wp < 0.5);
+        cluster_mask = (dist_to_wp < 0.6);
         if sum(cluster_mask) > required_particles
             cluster_particles = particles(:, cluster_mask);
             R_theta = sqrt(mean(cos(cluster_particles(3,:)))^2 + mean(sin(cluster_particles(3,:)))^2);
@@ -226,10 +210,10 @@ while true
             end
         end
     end
-
-    min_angle_required = pi;
+    
+    min_angle_required = pi/2;
     if is_global_search
-        min_angle_required = 2 * pi; 
+        min_angle_required = pi; 
     end
     
     if has_converged && (total_angle_turned > min_angle_required) 
@@ -239,15 +223,14 @@ while true
         disp(['Converged! Starting at waypoint ', num2str(starting_idx)]);
         break;
     end
-    pause(0.05); 
+    pause(0.02); 
 end
-
 initial_pose = [init_x; init_y; mean_theta];
 end
 
 % helper functions
 function isVisible = hasLineOfSight(p1, p2, map)
-    % Checks if the line segment from p1 to p2 intersects any wall in the map.
+    % checks if the line segment from p1 to p2 intersects any wall in the map.
     % map is an N-by-4 matrix: [x1, y1, x2, y2]
     
     isVisible = true;
@@ -263,12 +246,12 @@ function isVisible = hasLineOfSight(p1, p2, map)
 end
 
 function intersect = segmentsIntersect(A, B, C, D)
-    % True if line segment A-B intersects line segment C-D
-    % Uses cross product orientation method
+    % true if line segment A-B intersects line segment C-D
+    % uses cross product orientation method
     intersect = (ccw(A, C, D) ~= ccw(B, C, D)) && (ccw(A, B, C) ~= ccw(A, B, D));
 end
 
 function result = ccw(A, B, C)
-    % Counter-clockwise orientation check
+    % counter-clockwise orientation check
     result = (C(2) - A(2)) * (B(1) - A(1)) > (B(2) - A(2)) * (C(1) - A(1));
 end

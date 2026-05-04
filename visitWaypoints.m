@@ -44,14 +44,20 @@ wx = prmPath(prmIdx, 1);
 wy = prmPath(prmIdx, 2);
 
 ex = wx - x;
-ey = wy - y; 
+ey = wy - y;
 distance_to_prm_node = sqrt(ex^2 + ey^2);
 
 % go to next node if less than 0.1m away
 if distance_to_prm_node < 0.1
     prmIdx = prmIdx + 1;
 else
-    [cmdV, cmdW] = feedbackLin(ex, ey, theta, epsilon);
+    % Cap the error vector to maxV before feedbackLin.
+    % Without capping, a 1 m error with epsilon=0.15 produces cmdW ~ 6 rad/s,
+    % which after wheel saturation still spins at ~1.5 rad/s.  Large omega
+    % accumulates odometry heading error and fights EKF localization.
+    maxFeedVel = 0.2;
+    err_scale  = min(1, maxFeedVel / distance_to_prm_node);
+    [cmdV, cmdW] = feedbackLin(ex * err_scale, ey * err_scale, theta, epsilon);
 end
 
 end

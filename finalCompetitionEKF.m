@@ -1,8 +1,11 @@
-function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle)
+function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle, show_plots)
 % main function for AMR final competition (EKF localization variant)
 %   use_truth_angle  (optional, default false): if true, overrides the
 %       refined heading with the overhead localization truth pose (sim only)
+%   show_plots       (optional, default false): if true, opens live trajectory
+%       figure during navigation -- disable for real competition runs
     if nargin < 2, use_truth_angle = false; end
+    if nargin < 3, show_plots = false;      end
 
 %% Initial Localizaiton
 %1. Load the map data
@@ -94,6 +97,6 @@ function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle)
     disp(waypoint_idx);
     
     nav_sigma = diag([0.05^2, 0.05^2, (45*pi/180)^2]);
-    testVisitWaypointsEKF(Robot, waypoint_idx, refined_pose, nav_sigma);
+    testVisitWaypointsEKF(Robot, waypoint_idx, refined_pose, nav_sigma, show_plots);
 
 end
