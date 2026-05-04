@@ -1,5 +1,8 @@
-function [dataStore] = finalCompetitionEKF(Robot)%(Robot, maxTime, offset_x, offset_y)
+function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle)
 % main function for AMR final competition (EKF localization variant)
+%   use_truth_angle  (optional, default false): if true, overrides the
+%       refined heading with the overhead localization truth pose (sim only)
+    if nargin < 2, use_truth_angle = false; end
 
 %% Initial Localizaiton
 %1. Load the map data
@@ -35,6 +38,7 @@ function [dataStore] = finalCompetitionEKF(Robot)%(Robot, maxTime, offset_x, off
 
     disp('PF localization complete. Initial Pose:');
     disp(initial_pose);
+    fprintf('[DIAG] After PF: theta = %.1f deg\n', initial_pose(3) * 180/pi);
 
     %% Snap position to the exact starting waypoint
     % The PF identifies which waypoint we're at; the waypoint's known map
@@ -54,6 +58,7 @@ function [dataStore] = finalCompetitionEKF(Robot)%(Robot, maxTime, offset_x, off
     initial_pose(2) = waypoints(waypoint_idx, 2);   % exact y
     disp(['Snapped XY to waypoint ', num2str(waypoint_idx), ': ', ...
           num2str(initial_pose(1)), ', ', num2str(initial_pose(2))]);
+    fprintf('[DIAG] After XY snap: theta still = %.1f deg\n', initial_pose(3) * 180/pi);
 
     %% Refine heading via EKF rotation-in-place
     % Position is now ground-truth-accurate; theta is the only unknown.
@@ -61,12 +66,34 @@ function [dataStore] = finalCompetitionEKF(Robot)%(Robot, maxTime, offset_x, off
     disp('Refining heading with EKF (rotating in place)...');
     refined_pose = refineHeadingEKF(Robot, initial_pose, map, beacons, ...
                                     sensorOrigin, angles);
-    disp('Refined Pose:');
+    fprintf('[DIAG] After refineHeadingEKF: theta = %.1f deg\n', refined_pose(3) * 180/pi);
+
+    % Optional: override theta from overhead truth (simulator only)
+    if use_truth_angle
+        truth_ds = struct('truthPose', [], 'odometry', [], 'rsdepth', [], ...
+                          'bump', [], 'beacon', []);
+        noRobotCountTmp = 0;
+        for k_snap = 1:5
+            [noRobotCountTmp, truth_ds] = readStoreSensorData(Robot, noRobotCountTmp, truth_ds);
+            pause(0.1);
+        end
+        if ~isempty(truth_ds.truthPose)
+            truth_theta = truth_ds.truthPose(end, 4);
+            fprintf('[DIAG] use_truth_angle=true: overriding theta %.1f deg -> %.1f deg (truth)\n', ...
+                    refined_pose(3)*180/pi, truth_theta*180/pi);
+            refined_pose(3) = truth_theta;
+        else
+            disp('[DIAG] use_truth_angle=true but no truthPose available; keeping refined theta.');
+        end
+    end
+
+    disp('Final refined_pose going into navigation:');
     disp(refined_pose);
 
     disp(waypoints)
     disp(waypoint_idx);
     
-    testVisitWaypointsEKF(Robot, waypoint_idx, refined_pose);
+    nav_sigma = diag([0.05^2, 0.05^2, (20*pi/180)^2]);
+    testVisitWaypointsEKF(Robot, waypoint_idx, refined_pose, nav_sigma);
 
 end

@@ -56,8 +56,8 @@ function refined_pose = refineHeadingEKF(Robot, initial_pose, map, beaconLoc, se
     % ====================================================================
     % PHASE 1: Coarse heading search
     % ====================================================================
-    candidates = linspace(-pi, pi, 25);
-    candidates(end) = [];                        % 24 unique values
+    candidates = linspace(-pi, pi, 49);
+    candidates(end) = [];                        % 48 unique values
 
     % Latest depth scan
     if ~isempty(ds.rsdepth)
@@ -109,7 +109,7 @@ function refined_pose = refineHeadingEKF(Robot, initial_pose, map, beaconLoc, se
             if isempty(bRow), continue; end
             bxy = bRow(1, 2:3)';
             z_hat_bcn = local_beaconPredict([fixed_xy; c], bxy, sensorOrigin);
-            score   = score + 5 * sum((z_rel - z_hat_bcn).^2);
+            score   = score + beacon_weight * sum((z_rel - z_hat_bcn).^2);
             n_terms = n_terms + 2;
         end
 
@@ -140,7 +140,7 @@ function refined_pose = refineHeadingEKF(Robot, initial_pose, map, beaconLoc, se
 
     turnW          = 0.25;
     wheel2center   = 0.13;
-    maxRotation    = pi;                         % at most a half turn
+    maxRotation    = 3*pi/2;                     % at most a 3/4 turn
     minRotation    = pi/4;                       % at least 45 deg
     sigma_target   = (2*pi/180)^2;               % stop when std < 2 deg
 

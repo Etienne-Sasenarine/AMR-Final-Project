@@ -1,4 +1,4 @@
-function testVisitWaypointsEKF(Robot, startIdx, initial_pose)
+function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma)
 % testVisitWaypointsEKF: Identical to testVisitWaypoints, but localizes
 % with an EKF (odom + RealSense depth + AprilTag beacons) instead of
 % reading from dataStore.truthPose.
@@ -8,8 +8,9 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose)
 %       startIdx      Index of the starting waypoint
 %       initial_pose  3-by-1 [x; y; theta] from initLocalize
 
-    if nargin < 2,  startIdx = 3;                    end
-    if nargin < 3,  initial_pose = [0; 0; 0];        end
+    if nargin < 2,  startIdx = 3;                                               end
+    if nargin < 3,  initial_pose = [0; 0; 0];                                   end
+    if nargin < 4,  initial_sigma = diag([0.05^2, 0.05^2, (5*pi/180)^2]);      end
 
     % ---------------------------------------------------------
     % 1. LOAD MAP & INITIALIZE
@@ -139,7 +140,7 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose)
 
     % EKF state
     mu    = initial_pose(:);
-    sigma = diag([0.05^2, 0.05^2, (5*pi/180)^2]);
+    sigma = initial_sigma;
 
     % EKF noise (tuned conservatively)
     R_ekf  = diag([0.02^2, 0.02^2, (2*pi/180)^2]);

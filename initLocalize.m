@@ -148,6 +148,7 @@ total_angle_turned = 0;
 heading_threshold = 0.05;
 required_particles = 0.75 * M;
 max_wander_dist = 1;
+last_odom_idx = size(dataStore.odometry, 1);
 
 is_global_search = length(best_wp_indices) > 1;
 if is_global_search
@@ -162,10 +163,18 @@ while true
     SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
     
     [noRobotCount, dataStore] = readStoreSensorData(Robot, noRobotCount, dataStore);
-    odom = dataStore.odometry(end, :);
-    u = [odom(2); odom(3)];
-    total_angle_turned = total_angle_turned + abs(odom(3));
-    
+
+    % Accumulate ALL new odometry rows since last PF step
+    cur_odom_idx = size(dataStore.odometry, 1);
+    if cur_odom_idx > last_odom_idx
+        new_odom_rows = dataStore.odometry(last_odom_idx+1:cur_odom_idx, :);
+        u = [sum(new_odom_rows(:, 2)); sum(new_odom_rows(:, 3))];
+        total_angle_turned = total_angle_turned + abs(u(2));
+        last_odom_idx = cur_odom_idx;
+    else
+        u = [0; 0];
+    end
+
     depth = dataStore.rsdepth(end, :);
     z = depth(2:end)';
     
