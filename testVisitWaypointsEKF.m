@@ -13,7 +13,7 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma, sho
     if nargin < 2,  startIdx = 3;                                               end
     if nargin < 3,  initial_pose = [0; 0; 0];                                   end
     if nargin < 4,  initial_sigma = diag([0.05^2, 0.05^2, (5*pi/180)^2]);      end
-    if nargin < 5,  show_plots = false;                                          end
+    if nargin < 5,  show_plots = true;                                          end
 
     % ---------------------------------------------------------
     % 1. LOAD MAP & INITIALIZE
@@ -195,7 +195,7 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma, sho
                 %disp('[BUMP] Contact -- executing backup maneuver.');
                 SetFwdVelAngVelCreate(Robot, 0, 0);
                 pause(0.1);
-                [bV, bW] = limitCmds(-0.25, pi/6, 0.49, 0.13);
+                [bV, bW] = limitCmds(-0.25, pi/3, 0.49, 0.13);
                 SetFwdVelAngVelCreate(Robot, bV, bW);
                 pause(1);
                 SetFwdVelAngVelCreate(Robot, 0, 0);
