@@ -8,6 +8,8 @@ function [dataStore] = finalCompetitionEKF(Robot, use_truth_angle, show_plots)
     if nargin < 3, show_plots = false;      end
 
 %% Initial Localizaiton
+addpath("EKF Stuff\");
+addpath("tests\");
 %1. Load the map data
     mapData = load("PracticeMap2026.mat");
     waypoints = mapData.waypoints;

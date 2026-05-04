@@ -182,6 +182,30 @@ function testVisitWaypointsEKF(Robot, startIdx, initial_pose, initial_sigma, sho
             continue;
         end
 
+        % --- BUMP RESPONSE ---
+        % Mirrors the maneuver in backupBump.m: stop, reverse with a slight
+        % CW turn for 1 s, then stop again.  Afterwards widen sigma so the
+        % EKF knows the unexpected motion added positional uncertainty.
+        if ~isempty(dataStore.bump) && size(dataStore.bump, 2) >= 7
+            bump_row  = dataStore.bump(end, :);
+            frontBump = bump_row(7);
+            rightBump = bump_row(2);
+            leftBump  = bump_row(3);
+            if frontBump || rightBump || leftBump
+                disp('[BUMP] Contact -- executing backup maneuver.');
+                SetFwdVelAngVelCreate(Robot, 0, 0);
+                pause(0.1);
+                [bV, bW] = limitCmds(-0.25, pi/6, 0.49, 0.13);
+                SetFwdVelAngVelCreate(Robot, bV, bW);
+                pause(1);
+                SetFwdVelAngVelCreate(Robot, 0, 0);
+                % Widen EKF covariance: backup moved us to an uncertain spot
+                sigma(1,1) = max(sigma(1,1), 0.15^2);
+                sigma(2,2) = max(sigma(2,2), 0.15^2);
+                sigma(3,3) = max(sigma(3,3), (20*pi/180)^2);
+            end
+        end
+
         % --- EKF PREDICT on new odometry ---
         cur_odom_idx = size(dataStore.odometry, 1);
         if cur_odom_idx > last_odom_idx
