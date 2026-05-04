@@ -3,9 +3,8 @@ function testVisitWaypoints(Robot, startIdx)
 % 
 %   INPUTS
 %       Robot       iRobot Create object (from simulator initialization)
-%       startIdx    (Optional) Index of the starting waypoint. Defaults to 4.
+%       startIdx    (Optional) Index of the starting waypoint. Defaults to 3.
 
-    % Handle optional startIdx argument
     if nargin < 2
         startIdx = 3; 
     end
@@ -14,31 +13,29 @@ function testVisitWaypoints(Robot, startIdx)
     % 1. LOAD MAP & INITIALIZE
     % ---------------------------------------------------------
     disp(['--- PHASE 1: Initialization (Starting at Waypoint ', num2str(startIdx), ') ---']);
-    % Load the practice map (Ensure this file is in your directory)
     mapData = load('PracticeMap2026.mat');
     
-    all_walls = [mapData.map; mapData.optWalls];
+    if isfield(mapData, 'optWalls')
+        all_walls = [mapData.map; mapData.optWalls];
+    else
+        all_walls = mapData.map;
+    end
+    
     standard_waypoints = mapData.waypoints;
     boundaries = [-3.048, 3.048, -2.286, 2.286]; 
     
-    % Validate the requested start index
     num_standard_waypoints = size(standard_waypoints, 1);
     if startIdx < 1 || startIdx > num_standard_waypoints
         error(['startIdx must be between 1 and ', num2str(num_standard_waypoints)]);
     end
     
-    % Dynamically set the start pose based on the index
     start_pose = standard_waypoints(startIdx, :);
-    
-    % Create the unvisited targets list
     unvisitedWaypoints = standard_waypoints;
     unvisitedWaypoints(startIdx, :) = []; 
     
-    % Combine start pose and unvisited waypoints for the PRM/TSP planner
     target_waypoints = [start_pose; unvisitedWaypoints];
     num_targets = size(target_waypoints, 1);
     
-    % Load the EC waypoints list
     if isfield(mapData, 'ECwaypoints')
         unvisitedECWaypoints = mapData.ECwaypoints;
     else
@@ -49,19 +46,15 @@ function testVisitWaypoints(Robot, startIdx)
     % 2. PLANNING PHASE
     % ---------------------------------------------------------
     disp('--- PHASE 2: Motion Planning ---');
-    
-    % A. Build PRM
     numSamples = 2000; 
     robot_radius = 0.2; 
     disp('Building PRM...');
     roadmap = buildPRM(all_walls, boundaries, numSamples, robot_radius, target_waypoints);
     
-    % B. Build Cost Matrix
     disp('Calculating Dijkstra Cost Matrix...');
     target_indices = 1:num_targets;
     [cost_matrix, parent_matrix] = buildCostMatrix(roadmap, target_indices);
     
-    % C. Solve TSP / Shortest Hamiltonian Path
     disp('Solving Shortest Hamiltonian Path...');
     optimal_order = shortestHamiltonianPath(cost_matrix);
     
@@ -69,53 +62,72 @@ function testVisitWaypoints(Robot, startIdx)
         error('Planning Failed: No valid path to visit all waypoints.');
     end
     
-    % D. Extract Low-Level PRM Path
     disp('Extracting physical PRM route...');
     low_level_node_path = extractPath(optimal_order, target_indices, parent_matrix);
     physical_path_coords = roadmap.nodes(low_level_node_path, :);
-    
     disp('Planning Complete! Ready to drive.');
     
     % ---------------------------------------------------------
-    % 3. EXECUTION PHASE (CONTROL LOOP)
+    % 3. EXECUTION PHASE (CONTROL LOOP WITH PF)
     % ---------------------------------------------------------
     disp('--- PHASE 3: Execution ---');
     
-    % Control Parameters
     maxTime = 300;           
-    maxV = 0.2;              % STRICT final competition speed limit
+    maxV = 0.2;              
     wheel2center = 0.13;     
-    epsilon = 0.2;           % Turn radius / lookahead distance
+    epsilon = 0.2;           
     prmIdx = 1;
     
-    % --- NEW: EKF INITIALIZATION ---
-    R = diag([0.005, 0.005, 0.01]); % Process noise (motion)
-    % Note: Q is now initialized dynamically inside the loop based on sensor rays
+    % --- PF INITIALIZATION ---
+    M = 300; 
+    particles = zeros(3, M);
+    particles(1, :) = start_pose(1) + 0.1 * randn(1, M);
+    particles(2, :) = start_pose(2) + 0.1 * randn(1, M);
+    particles(3, :) = 0 + 0.05 * randn(1, M); 
     
-    % Assuming initial heading is 0, initialize mu and Sigma
-    mu = [start_pose(1); start_pose(2); 0]; 
-    Sigma = diag([0.1, 0.1, 0.1]); 
+    R_pf = diag([0.005, 0.005, 0.01]); 
+    predict_fn = @integrateOdom;       
+    sensor_pos = [0.13, 0];            
     
-    % Initialize Sensor Data Store (Added ekfMu and ekfSigma)
     global dataStore
     dataStore = struct('truthPose', [], 'odometry', [], 'rsdepth', [], 'bump', [], ...
-                       'beacon', [], 'ekfMu', [], 'ekfSigma', []);
+                       'beacon', [], 'pfMu', []);
     noRobotCount = 0;
     SetFwdVelAngVelCreate(Robot, 0, 0);
+
+    % =========================================================
+    % --- LIVE PLOT SETUP (DO THIS BEFORE THE LOOP) ---
+    % =========================================================
+    fig_live = figure('Name', 'Live PF Tracking vs Truth');
+    clf(fig_live); % Clear it in case it was already open
+    hold on; grid on; axis equal;
+    xlim([boundaries(1), boundaries(2)]);
+    ylim([boundaries(3), boundaries(4)]);
+    title('Live Tracking: True Pose (Blue) vs PF Estimate (Red) vs Particles (Pink)');
+    xlabel('X (m)'); ylabel('Y (m)');
+    
+    % 1. Plot static map features (Walls and PRM path)
+    for w = 1:size(all_walls, 1)
+        plot([all_walls(w,1), all_walls(w,3)], [all_walls(w,2), all_walls(w,4)], 'k-', 'LineWidth', 1.5);
+    end
+    plot(standard_waypoints(:,1), standard_waypoints(:,2), 'bp', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+    plot(physical_path_coords(:,1), physical_path_coords(:,2), 'g:', 'LineWidth', 1);
+
+    % 2. Initialize dynamic graphics handles (Starts with dummy/initial data)
+    h_particles = plot(particles(1,:), particles(2,:), '.', 'Color', [1.0 0.6 0.6], 'MarkerSize', 4);
+    
+    h_truth_trail = plot(NaN, NaN, 'b-', 'LineWidth', 1.5);
+    h_truth_pt = plot(NaN, NaN, 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+    
+    h_pf_trail = plot(start_pose(1), start_pose(2), 'r--', 'LineWidth', 1.5);
+    h_pf_pt = plot(start_pose(1), start_pose(2), 'rs', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+    % =========================================================
     
     tic;
     while toc < maxTime && ~isempty(unvisitedWaypoints)
         
         current_time = toc;
-        
-        % Read sensors
         [noRobotCount, dataStore] = readStoreSensorData(Robot, noRobotCount, dataStore);
-        
-        if isempty(dataStore.truthPose)
-            continue;
-        end
-        
-        % --- NEW: EKF BACKGROUND TRACKING ---
         
         % 1. Extract Control Input (u) from Odometry
         if size(dataStore.odometry, 1) >= 1
@@ -126,58 +138,68 @@ function testVisitWaypoints(Robot, startIdx)
             u = [0; 0];
         end
         
-        % 2. Extract Measurement (z) from RealSense Depth
-        % In dataStore.rsdepth, col 1 is count, col 2 is time, col 3-end are the ray depths
+        % 2. Extract Measurement (z) with Hardware NaN Filtering
         if size(dataStore.rsdepth, 1) >= 1
-            z = dataStore.rsdepth(end, 3:end)'; 
+            z_raw = dataStore.rsdepth(end, 3:end)'; 
+            num_rays_total = length(z_raw);
+            angles_raw = linspace(27 * pi/180, -27 * pi/180, num_rays_total)';
             
-            % DYNAMICALLY SIZE Q based on number of depth rays returned
-            num_rays = length(z);
-            Q = eye(num_rays) * 0.1; 
+            valid_idx = ~isnan(z_raw) & ~isinf(z_raw) & (z_raw > 0.1) & (z_raw < 5.0);
+            
+            z = z_raw(valid_idx);
+            angles = angles_raw(valid_idx);
+            num_valid = length(z);
+            
+            if num_valid > 0
+                Q_pf = eye(num_valid) * 0.1; 
+                update_fn = @(pose) depthPredict(pose, all_walls, sensor_pos, angles);
+            else
+                z = [];
+                Q_pf = [];
+                update_fn = @(pose) [];
+            end
         else
-            z = []; % Pass empty if no measurement this tick
-            Q = [];
+            z = [];
+            Q_pf = [];
+            update_fn = @(pose) [];
         end
         
-        % 3. Set up Function Pointers for the EKF
-        sensor_pos = [0.13, 0]; 
+        % 3. Run the Particle Filter Step
+        [particles, ~] = PF(particles, u, z, R_pf, Q_pf, predict_fn, update_fn);
         
-        g_func = @(x, u) integrateOdom(x, u(1), u(2)); 
-        Gjac_func = @(x, u) GjacDiffDrive(x, u);
+        x = mean(particles(1,:));
+        y = mean(particles(2,:));
+        theta = atan2(mean(sin(particles(3,:))), mean(cos(particles(3,:))));
         
-        if ~isempty(z)
-            actual_n = length(z);
-            angles = linspace(27 * pi/180, -27 * pi/180, actual_n)';
-            
-            % Pass 'all_walls' (from Phase 1) as the map
-            h_func = @(x) depthPredict(x, all_walls, sensor_pos, angles);
-            Hjac_func = @(x) HjacDepth(x, all_walls, sensor_pos, actual_n);
-        else
-            % Fallback dummy functions for when the EKF is only running the predict step
-            h_func = @(x) [];
-            Hjac_func = @(x) [];
+        mu = [x; y; theta];
+        dataStore.pfMu = [dataStore.pfMu; [current_time, mu']];
+
+        % =========================================================
+        % --- UPDATE LIVE PLOT GRAPHICS HANDLES ---
+        % =========================================================
+        % Update particle cloud
+        set(h_particles, 'XData', particles(1,:), 'YData', particles(2,:));
+        
+        % Update truth trajectory (if overhead camera data exists)
+        if ~isempty(dataStore.truthPose)
+            set(h_truth_trail, 'XData', dataStore.truthPose(:,2), 'YData', dataStore.truthPose(:,3));
+            set(h_truth_pt, 'XData', dataStore.truthPose(end,2), 'YData', dataStore.truthPose(end,3));
         end
         
-        % 4. Run the EKF Engine
-        [mu, Sigma] = EKF(mu, Sigma, u, z, g_func, Gjac_func, h_func, Hjac_func, R, Q);
+        % Update PF trajectory
+        set(h_pf_trail, 'XData', dataStore.pfMu(:,2), 'YData', dataStore.pfMu(:,3));
+        set(h_pf_pt, 'XData', mu(1), 'YData', mu(2));
         
-        % Log EKF data
-        dataStore.ekfMu = [dataStore.ekfMu; [current_time, mu']];
+        % drawnow limitrate intelligently drops frames to keep the code running fast
+        drawnow limitrate;
+        % =========================================================
         
         % --------------------------------------------------------------
-        % NAVIGATION LOGIC (NOW STRICTLY USING EKF STATE)
+        % NAVIGATION LOGIC (USING PF STATE)
         % --------------------------------------------------------------
-        
-        % Extract current belief of position from EKF output vector
-        x = mu(1);
-        y = mu(2);
-        theta = mu(3);
-        
-        % 1. Call your visitWaypoints function for regular navigation
         [cmdV, cmdW, prmIdx, unvisitedWaypointsNew] = visitWaypoints(...
             x, y, theta, physical_path_coords, prmIdx, unvisitedWaypoints, epsilon);
             
-        % 2. Check if a regular waypoint was reached
         if size(unvisitedWaypointsNew, 1) < size(unvisitedWaypoints, 1)
             SetFwdVelAngVelCreate(Robot, 0, 0);
             try beepCreate(Robot); catch; beep; end
@@ -186,10 +208,8 @@ function testVisitWaypoints(Robot, startIdx)
         end
         unvisitedWaypoints = unvisitedWaypointsNew;
         
-        % 3. Opportunistic Drive-By Scoring for EC Waypoints
         for i = 1:size(unvisitedECWaypoints, 1)
             dist_to_ec = norm([x, y] - unvisitedECWaypoints(i, :));
-            
             if dist_to_ec <= 0.2 
                 SetFwdVelAngVelCreate(Robot, 0, 0);
                 try beepCreate(Robot); catch; beep; end
@@ -200,20 +220,17 @@ function testVisitWaypoints(Robot, startIdx)
             end
         end
         
-        % 4. Enforce speed limits and send commands
         [cmdV, cmdW] = limitCmds(cmdV, cmdW, maxV, wheel2center);
         SetFwdVelAngVelCreate(Robot, cmdV, cmdW);
         
-        % Break if we reached the end of the PRM path
         if prmIdx > size(physical_path_coords, 1) && ~isempty(unvisitedWaypoints)
             disp('Reached end of PRM path, but waypoints remain unvisited.');
             break;
         end
         
-        pause(0.1);
+        pause(0.05); 
     end
     
-    % Stop the robot cleanly
     SetFwdVelAngVelCreate(Robot, 0, 0);
     
     if isempty(unvisitedWaypoints)
@@ -223,29 +240,27 @@ function testVisitWaypoints(Robot, startIdx)
     end
     
     % ---------------------------------------------------------
-    % 4. PLOTTING PHASE (Truth vs. EKF)
+    % 4. PLOTTING PHASE (Final Static Plot)
     % ---------------------------------------------------------
-    disp('--- PHASE 4: Generating Diagnostics ---');
+    disp('--- PHASE 4: Generating Final Diagnostics ---');
     
-    if ~isempty(dataStore.ekfMu) && ~isempty(dataStore.truthPose)
-        figure('Name', 'EKF vs Truth Pose Trajectory'); hold on; grid on;
+    if ~isempty(dataStore.pfMu)
+        figure('Name', 'Final PF vs Truth Pose Trajectory'); hold on; grid on;
         
-        % Plot the true trajectory (Columns 2 and 3 are x and y)
-        plot(dataStore.truthPose(:,2), dataStore.truthPose(:,3), 'b-', 'LineWidth', 2);
+        if ~isempty(dataStore.truthPose)
+            plot(dataStore.truthPose(:,2), dataStore.truthPose(:,3), 'b-', 'LineWidth', 2, 'DisplayName', 'True Pose (Overhead)');
+            plot(dataStore.truthPose(1,2), dataStore.truthPose(1,3), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'g', 'DisplayName', 'Truth Start');
+            plot(dataStore.truthPose(end,2), dataStore.truthPose(end,3), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'r', 'DisplayName', 'Truth End');
+        end
         
-        % Plot the EKF estimated trajectory
-        plot(dataStore.ekfMu(:,2), dataStore.ekfMu(:,3), 'r--', 'LineWidth', 1.5);
+        plot(dataStore.pfMu(:,2), dataStore.pfMu(:,3), 'r--', 'LineWidth', 1.5, 'DisplayName', 'PF Estimate');
+        plot(dataStore.pfMu(1,2), dataStore.pfMu(1,3), 'k^', 'MarkerSize', 8, 'MarkerFaceColor', 'g', 'DisplayName', 'PF Start');
+        plot(dataStore.pfMu(end,2), dataStore.pfMu(end,3), 'k^', 'MarkerSize', 8, 'MarkerFaceColor', 'r', 'DisplayName', 'PF End');
         
-        % Plot Start and End points for clarity
-        plot(dataStore.truthPose(1,2), dataStore.truthPose(1,3), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
-        plot(dataStore.truthPose(end,2), dataStore.truthPose(end,3), 'ko', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
-        
-        title('Robot Trajectory: Overhead Camera vs EKF Estimate');
+        title('Final Robot Trajectory Tracking');
         xlabel('Global X Position (m)');
         ylabel('Global Y Position (m)');
-        legend('True Pose (Overhead)', 'EKF Estimate', 'Start Point', 'End Point', 'Location', 'best');
+        legend('Location', 'best');
         axis equal;
-    else
-        disp('Warning: Not enough data logged to plot EKF comparison.');
     end
 end

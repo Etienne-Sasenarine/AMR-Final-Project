@@ -116,9 +116,9 @@ end
 % if only waypoint is matched
 if isscalar(best_wp_indices)
     disp('Unique match found! Fast-tracking Particle Filter to resolve HEADING ONLY.');
-    particles_per_wp = 50; % Ultra-low compute since X and Y are known
+    particles_per_wp = 200; % Ultra-low compute since X and Y are known
 else
-    particles_per_wp = 200; % Normal optimization
+    particles_per_wp = 500; % Normal optimization
 end
 
 % initalize particles
@@ -127,7 +127,7 @@ particles = zeros(3, M);
 idx = 1;
 for i = 1:length(best_wp_indices)
     wp_idx = best_wp_indices(i);
-    
+
     if isscalar(best_wp_indices)
         spread = 0.05; 
     else
