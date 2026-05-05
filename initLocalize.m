@@ -1,9 +1,10 @@
-function initial_pose = initLocalize(Robot, waypoints, beacons, walls, R, Q, predict, update)
+function [initial_pose, dataStore] = initLocalize(Robot, dataStore, waypoints, beacons, walls, R, Q, predict, update)
 % initLocalize: Spins robot in place and uses particle filter to find
 % initial starting location
 %
 %   INPUTS
 %       Robot           Robot object
+%       dataStore       dataStore struct
 %       waypoints       k-by-2 matrix of possible starting locations
 %       beacons         b-by-2 matrix of beacon locations [tag, x, y]
 %       map             N-by-4 matrix of map walls [x1, y1, x2, y2]
@@ -14,6 +15,7 @@ function initial_pose = initLocalize(Robot, waypoints, beacons, walls, R, Q, pre
 %
 %   OUTPUTS
 %       initial_pose      3-by-1 state vector [x; y; theta] of the start pose
+%       dataStore         dataStore struct
 
 try 
     CreatePort = Robot.CreatePort;
@@ -25,14 +27,12 @@ SetFwdVelAngVelCreate(Robot, 0,0);
 
 % define parameters
 k = size(waypoints, 1);
-dataStore = struct('odometry', [], 'rsdepth', [], 'beacon', []);
 noRobotCount = 0;
 turnW = 0.4;
 wheel2center = 0.13;
 max_sensor_range = 3.0;
 
 % find visibility map of tags for each waypoint
-disp('Computing Visibility Map with Line-of-Sight...');
 visibility_map = cell(k, 1); 
 for i = 1:k
     wp_x = waypoints(i, 1);
@@ -54,11 +54,8 @@ for i = 1:k
     end
     visibility_map{i} = visible_tags;
 end
-disp('Visibility map computed!');
-disp(visibility_map)
 
 % full 360 degree rotation to find tags
-disp('Starting 360-degree sweep to find tags...');
 seen_tags = [];
 sweep_angle_turned = 0;
 while sweep_angle_turned < 2.05 * pi 
@@ -75,7 +72,6 @@ while sweep_angle_turned < 2.05 * pi
             seen_id = recent_beacons(1, 3); 
             if ~ismember(seen_id, seen_tags)
                 seen_tags = [seen_tags, seen_id];
-                disp(['Spotted Tag: ', num2str(seen_id)]);
             end
         end
     end
@@ -85,7 +81,6 @@ SetFwdVelAngVelCreate(Robot, 0, 0);
 
 % match tags to waypoints
 if isempty(seen_tags)
-    disp('No tags seen! Filtering for waypoints that also expect zero tags...');
     best_wp_indices = [];
     for i = 1:k
         if isempty(visibility_map{i})
@@ -95,10 +90,7 @@ if isempty(seen_tags)
     
     % if all waypoints see tags saftey fallback
     if isempty(best_wp_indices)
-        disp('Warning: All waypoints expect tags, but none seen. Falling back to all waypoints.');
         best_wp_indices = 1:k;
-    else
-        disp(['Blind spot matching complete. Initializing at waypoint(s): ', num2str(best_wp_indices)]);
     end
     
 else
@@ -109,16 +101,13 @@ else
     end
     max_score = max(scores);
     best_wp_indices = find(scores == max_score);
-    
-    disp(['Matching complete. Initializing at waypoint(s): ', num2str(best_wp_indices')]);
 end
 
 % if only waypoint is matched
 if isscalar(best_wp_indices)
-    disp('Unique match found! Fast-tracking Particle Filter to resolve HEADING ONLY.');
-    particles_per_wp = 200; % Ultra-low compute since X and Y are known
+    particles_per_wp = 200;
 else
-    particles_per_wp = 500; % Normal optimization
+    particles_per_wp = 500;
 end
 
 % initalize particles
@@ -141,7 +130,6 @@ for i = 1:length(best_wp_indices)
 end
 
 % run particle filter
-disp('Dialing in exact pose with Particle Filter...');
 total_angle_turned = 0;
 heading_threshold = 0.1;
 required_particles = 0.65 * M;
@@ -149,7 +137,6 @@ max_wander_dist = 1;
 is_global_search = length(best_wp_indices) > 1;
 
 if is_global_search
-    disp('Global Search Mode: Relaxing measurement noise to prevent false convergence.');
     active_Q = Q * 15;
 else
     active_Q = Q * 5;
@@ -166,7 +153,7 @@ while true
     
     if mod(size(dataStore.odometry, 1), 2) == 0
         depth = dataStore.rsdepth(end, :);
-        z = depth(2:end)';
+        z = depth(3:end)';
         [particles, ~] = PF(particles, u, z, R, active_Q, predict, update);
     end
     
@@ -220,7 +207,6 @@ while true
         init_x = waypoints(starting_idx, 1); 
         init_y = waypoints(starting_idx, 2);
         SetFwdVelAngVelCreate(Robot, 0, 0);
-        disp(['Converged! Starting at waypoint ', num2str(starting_idx)]);
         break;
     end
     pause(0.02); 
