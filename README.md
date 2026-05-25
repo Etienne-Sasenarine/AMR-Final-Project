@@ -17,6 +17,7 @@ This repository is built around a practical robotics pipeline. The main mission 
 
 ## Structure
 
+```text
 AMR-Final-Project/
 ├── finalCompetition.m           # Main mission orchestrator
 │
@@ -46,6 +47,7 @@ AMR-Final-Project/
     ├── PracticeMap2026.txt
     ├── practiceMap2026_4credit.mat
     └── practiceMap2026_4credit.txt
+```
 
 ## Usage
 
